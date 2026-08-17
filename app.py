@@ -21,6 +21,7 @@ from gui import SettingsWindow, OTPAuthDialog
 from updater import get_latest_version_info, open_release_page, CURRENT_VERSION
 from telemetry import send_event_async
 from riot_api import RiotAPIValidator
+from i18n import t, set_language
 
 
 def create_tray_icon_image() -> Image.Image:
@@ -47,6 +48,7 @@ def create_tray_icon_image() -> Image.Image:
 class DBjaraApp:
     def __init__(self):
         self.config = load_config()
+        set_language(self.config.get("language", "ko"))
         self.lcu = LCUClient()
         self.running = True
         self.tray_icon: Optional[pystray.Icon] = None
@@ -95,7 +97,7 @@ class DBjaraApp:
         def _check():
             has_update, tag, _, url = get_latest_version_info()
             if has_update:
-                self.notify("DBjara 새 버전 업데이트 알림", f"새로운 버전 ({tag})이 출시되었습니다.\n트레이 메뉴의 설정을 열어 확인하세요.")
+                self.notify(t("notif_update_title"), t("notif_update_msg", tag=tag))
         threading.Thread(target=_check, daemon=True).start()
 
     def monitor_loop(self):
@@ -109,7 +111,7 @@ class DBjaraApp:
                 if self.config.get("night_lock", True) and self.is_in_night_time():
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
-                        self.notify("DBjara - 야간 강제 차단", "야간 시간대입니다. 게임이 즉시 종료되었습니다. 어서 주무세요.")
+                        self.notify(t("notif_night_title"), t("notif_night_msg"))
                         send_event_async(self.config, "block_night")
                         time.sleep(2)
                         continue
@@ -119,7 +121,7 @@ class DBjaraApp:
                 if mode == "high":
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
-                        self.notify("DBjara - 실행 차단", "통제 강도 [상] 설정으로 인해 롤 실행이 차단되었습니다.")
+                        self.notify(t("notif_high_title"), t("notif_high_msg"))
                         send_event_async(self.config, "block_high")
                         time.sleep(2)
                         continue
@@ -137,7 +139,7 @@ class DBjaraApp:
                             if party_size == 1:
                                 if search_state == "Searching" or phase in ("Matchmaking", "ReadyCheck"):
                                     if self.lcu.cancel_matchmaking():
-                                        self.notify("DBjara - 솔로 매칭 취소", "1인 솔로 랭크 매칭이 감지되어 취소되었습니다.\n(2인 이상 다인큐만 가능합니다)")
+                                        self.notify(t("notif_solo_title"), t("notif_solo_msg"))
                                         send_event_async(self.config, "block_solo_cancel")
 
                         # '하' 모드: 일일 솔로 시간 누적 및 제한
@@ -149,14 +151,14 @@ class DBjaraApp:
 
                                 if self.config["daily_played_seconds"] >= limit_sec:
                                     self.lcu.kill_league_client()
-                                    self.notify("DBjara - 일일 시간 초과", f"오늘의 솔로 허용 시간({self.config.get('daily_limit_minutes')}분)을 모두 소진하여 종료되었습니다.")
+                                    self.notify(t("notif_time_title"), t("notif_time_msg", minutes=self.config.get("daily_limit_minutes")))
                                     send_event_async(self.config, "block_time_limit")
 
                             elif party_size == 1 and (search_state == "Searching" or phase in ("Matchmaking", "ReadyCheck")):
                                 limit_sec = self.config.get("daily_limit_minutes", 120) * 60
                                 if self.config.get("daily_played_seconds", 0) >= limit_sec:
                                     self.lcu.cancel_matchmaking()
-                                    self.notify("DBjara - 솔로 매칭 차단", "오늘의 일일 솔로 허용 시간을 초과하여 매칭이 차단되었습니다.")
+                                    self.notify(t("notif_solo_title"), t("notif_time_block_msg"))
 
                 # 30초마다 설정 및 누적 플레이 시간 저장
                 if time.time() - last_save_time > 30:
@@ -184,6 +186,7 @@ class DBjaraApp:
     def on_config_updated(self, new_config: dict):
         """GUI에서 사용자가 설정을 변경하고 저장했을 때의 콜백입니다."""
         self.config = new_config
+        set_language(self.config.get("language", "ko"))
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
 
     def open_settings_ui(self):
@@ -247,21 +250,21 @@ class DBjaraApp:
 
         # 4. 시스템 트레이 메뉴 구성
         def get_status_text(item):
-            mode_names = {"high": "상 (전체 차단)", "medium": "중 (솔로 금지)", "low": "하 (시간 제한)"}
+            mode_names = {"high": t("tray_mode_high"), "medium": t("tray_mode_medium"), "low": t("tray_mode_low")}
             m_str = mode_names.get(self.config.get("mode", "medium"), "중")
-            return f"통제 모드: {m_str}"
+            return f"{t('tray_status_prefix')}{m_str}"
 
         menu = pystray.Menu(
             pystray.MenuItem(get_status_text, None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("설정 열기 (DBjara)", lambda: threading.Thread(target=self.open_settings_ui, daemon=True).start()),
-            pystray.MenuItem("업데이트 확인", lambda: threading.Thread(target=lambda: open_release_page(), daemon=True).start()),
+            pystray.MenuItem(lambda item: t("tray_open_settings"), lambda: threading.Thread(target=self.open_settings_ui, daemon=True).start()),
+            pystray.MenuItem(lambda item: t("tray_check_update"), lambda: threading.Thread(target=lambda: open_release_page(), daemon=True).start()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("DBjara 종료", lambda: threading.Thread(target=self.request_exit, daemon=True).start()),
+            pystray.MenuItem(lambda item: t("tray_exit"), lambda: threading.Thread(target=self.request_exit, daemon=True).start()),
         )
 
         icon_image = create_tray_icon_image()
-        self.tray_icon = pystray.Icon("DBjara", icon_image, "디비자라 (DBjara) - LoL 통제기", menu)
+        self.tray_icon = pystray.Icon("DBjara", icon_image, "DBjara - LoL Solo Blocker", menu)
 
         print("[DBjara] 시스템 트레이 아이콘이 실행되었습니다.")
         self.tray_icon.run()

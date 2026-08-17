@@ -7,6 +7,7 @@ import json
 import winreg
 import sys
 from datetime import datetime
+from i18n import set_language
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -14,6 +15,7 @@ APP_NAME = "DBjara"
 
 # 기본 설정값 정의
 DEFAULT_CONFIG = {
+    "language": "ko",  # 표시 언어 ("ko": 한국어, "en": English)
     "mode": "medium",  # 통제 모드: "high"(전체 차단), "medium"(솔로 차단), "low"(시간 제한)
     "daily_limit_minutes": 120,  # '하' 모드 시 일일 최대 허용 솔로 시간(분)
     "night_lock": True,  # 야간 강제 차단 활성화 여부
@@ -43,6 +45,9 @@ def load_config() -> dict:
         except Exception as e:
             print(f"[Config] 설정 파일 읽기 실패 ({CONFIG_FILE}): {e}")
 
+    # 언어 설정 반영
+    set_language(config.get("language", "ko"))
+
     # 날짜가 바뀌었을 경우 당일 누적 플레이 시간 초기화
     today = datetime.now().strftime("%Y-%m-%d")
     if config.get("daily_played_date") != today:
@@ -56,6 +61,7 @@ def load_config() -> dict:
 def save_config(config: dict) -> bool:
     """현재 설정을 config.json 파일에 저장합니다."""
     try:
+        set_language(config.get("language", "ko"))
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
         return True

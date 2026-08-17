@@ -1,5 +1,6 @@
 """
 DBjara - Tkinter GUI 설정 화면 및 OTP 다이얼로그 모듈
+i18n 다국어 지원 (한국어 / English) 및 직관적인 다크 테마 UI를 제공합니다.
 """
 
 import tkinter as tk
@@ -9,6 +10,7 @@ from typing import Optional, Callable
 from config import load_config, save_config, set_auto_start
 from totp import generate_secret, verify_totp, get_otpauth_uri
 from updater import get_latest_version_info, open_release_page, CURRENT_VERSION
+from i18n import t, set_language, get_current_language
 
 try:
     import qrcode
@@ -22,10 +24,10 @@ class DarkTheme:
     BG_DARK = "#121418"
     BG_CARD = "#1a1e24"
     BG_CARD_LIGHT = "#242a33"
-    ACCENT_PRIMARY = "#3b82f6"  # 파란색 계열 강조색
+    ACCENT_PRIMARY = "#3b82f6"
     ACCENT_HOVER = "#2563eb"
-    ACCENT_SUCCESS = "#10b981"  # 녹색
-    ACCENT_DANGER = "#ef4444"   # 경고 및 오류 색상
+    ACCENT_SUCCESS = "#10b981"
+    ACCENT_DANGER = "#ef4444"
     TEXT_MAIN = "#f3f4f6"
     TEXT_MUTED = "#9ca3af"
     BORDER = "#2e3744"
@@ -38,7 +40,7 @@ class OTPAuthDialog(tk.Toplevel):
         super().__init__(parent)
         self.secret = secret
         self.on_success = on_success
-        self.title("동반자 OTP 인증 - DBjara")
+        self.title(t("otp_auth_title"))
         self.geometry("380x260")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
@@ -61,15 +63,14 @@ class OTPAuthDialog(tk.Toplevel):
         pad.pack(fill=tk.BOTH, expand=True)
 
         lbl_title = tk.Label(
-            pad, text="동반자 OTP 인증 필요", font=("Malgun Gothic", 13, "bold"),
+            pad, text=t("otp_auth_title"), font=("Malgun Gothic", 13, "bold"),
             bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MAIN
         )
         lbl_title.pack(pady=(0, 4))
 
         lbl_desc = tk.Label(
-            pad,
-            text="설정 변경 또는 앱 종료를 위해\n동반자(친구)의 스마트폰 OTP 번호 6자리를 입력하세요.",
-            font=("Malgun Gothic", 9), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED, justify=tk.CENTER
+            pad, text=t("otp_auth_desc"), font=("Malgun Gothic", 9),
+            bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED, justify=tk.CENTER
         )
         lbl_desc.pack(pady=6)
 
@@ -92,7 +93,7 @@ class OTPAuthDialog(tk.Toplevel):
         btn_frame.pack(fill=tk.X)
 
         btn_submit = tk.Button(
-            btn_frame, text="인증하기", font=("Malgun Gothic", 10, "bold"),
+            btn_frame, text=t("otp_auth_btn"), font=("Malgun Gothic", 10, "bold"),
             bg=DarkTheme.ACCENT_PRIMARY, fg="white", activebackground=DarkTheme.ACCENT_HOVER,
             activeforeground="white", bd=0, relief=tk.FLAT, pady=6, cursor="hand2",
             command=self.verify
@@ -100,7 +101,7 @@ class OTPAuthDialog(tk.Toplevel):
         btn_submit.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 4))
 
         btn_cancel = tk.Button(
-            btn_frame, text="취소", font=("Malgun Gothic", 10),
+            btn_frame, text=t("otp_cancel_btn"), font=("Malgun Gothic", 10),
             bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MUTED, bd=0, relief=tk.FLAT,
             pady=6, cursor="hand2", command=self.destroy
         )
@@ -112,7 +113,7 @@ class OTPAuthDialog(tk.Toplevel):
             self.destroy()
             self.on_success()
         else:
-            self.lbl_error.config(text="번호가 일치하지 않습니다. 다시 확인하세요.")
+            self.lbl_error.config(text=t("otp_err_mismatch"))
             self.entry_otp.delete(0, tk.END)
 
 
@@ -123,7 +124,7 @@ class OTPSetupDialog(tk.Toplevel):
         super().__init__(parent)
         self.secret = current_secret if current_secret else generate_secret()
         self.on_complete = on_complete
-        self.title("동반자 등록 (Google Authenticator) - DBjara")
+        self.title(t("otp_setup_title"))
         self.geometry("450x580")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
@@ -146,15 +147,14 @@ class OTPSetupDialog(tk.Toplevel):
         pad.pack(fill=tk.BOTH, expand=True)
 
         lbl_title = tk.Label(
-            pad, text="동반자(친구/가족) 스마트폰 등록", font=("Malgun Gothic", 13, "bold"),
+            pad, text=t("otp_setup_head"), font=("Malgun Gothic", 13, "bold"),
             bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MAIN
         )
         lbl_title.pack(anchor="w")
 
         lbl_sub = tk.Label(
-            pad,
-            text="친구의 스마트폰(Google Authenticator 앱 등)으로\n아래 QR 코드를 스캔하거나 비밀키를 직접 입력해 등록하세요.",
-            font=("Malgun Gothic", 9), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED, justify=tk.LEFT
+            pad, text=t("otp_setup_sub"), font=("Malgun Gothic", 9),
+            bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED, justify=tk.LEFT
         )
         lbl_sub.pack(anchor="w", pady=(4, 12))
 
@@ -173,7 +173,7 @@ class OTPSetupDialog(tk.Toplevel):
             qr_label.pack()
         else:
             lbl_no_qr = tk.Label(
-                qr_frame, text="[QR 모듈 미설치]\n아래 시크릿 키를 직접 입력하세요.",
+                qr_frame, text="[QR Error] Secret Key Only",
                 bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED, font=("Malgun Gothic", 9), pady=30, padx=20
             )
             lbl_no_qr.pack()
@@ -182,7 +182,7 @@ class OTPSetupDialog(tk.Toplevel):
         key_box = tk.Frame(pad, bg=DarkTheme.BG_CARD_LIGHT, padx=10, pady=6)
         key_box.pack(fill=tk.X, pady=12)
 
-        lbl_key_title = tk.Label(key_box, text="등록용 비밀키(Secret Key):", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MUTED)
+        lbl_key_title = tk.Label(key_box, text=t("otp_key_title"), font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MUTED)
         lbl_key_title.pack(anchor="w")
 
         key_row = tk.Frame(key_box, bg=DarkTheme.BG_CARD_LIGHT)
@@ -195,7 +195,7 @@ class OTPSetupDialog(tk.Toplevel):
         self.lbl_secret.pack(side=tk.LEFT)
 
         btn_copy = tk.Button(
-            key_row, text="복사", font=("Malgun Gothic", 8),
+            key_row, text=t("otp_copy_btn"), font=("Malgun Gothic", 8),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=0, padx=8, pady=2,
             cursor="hand2", command=self.copy_key
         )
@@ -203,7 +203,7 @@ class OTPSetupDialog(tk.Toplevel):
 
         # 등록 검증 테스트 필드
         lbl_test = tk.Label(
-            pad, text="등록 후 친구의 폰에 생성된 6자리 번호로 테스트:",
+            pad, text=t("otp_test_label"),
             font=("Malgun Gothic", 9), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MAIN
         )
         lbl_test.pack(anchor="w", pady=(6, 2))
@@ -220,7 +220,7 @@ class OTPSetupDialog(tk.Toplevel):
         self.entry_test.pack(side=tk.LEFT, ipady=3)
 
         btn_test = tk.Button(
-            test_row, text="테스트 및 등록 완료", font=("Malgun Gothic", 9, "bold"),
+            test_row, text=t("otp_test_btn"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.ACCENT_PRIMARY, fg="white", bd=0, padx=12, pady=4,
             cursor="hand2", command=self.test_and_save
         )
@@ -232,20 +232,20 @@ class OTPSetupDialog(tk.Toplevel):
     def copy_key(self):
         self.clipboard_clear()
         self.clipboard_append(self.secret)
-        messagebox.showinfo("복사 완료", "비밀키가 클립보드에 복사되었습니다.", parent=self)
+        messagebox.showinfo(t("copied_title"), t("copied_msg"), parent=self)
 
     def test_and_save(self):
         code = self.entry_test.get().strip()
         if not code:
-            self.lbl_msg.config(text="6자리 번호를 입력해주세요.", fg=DarkTheme.ACCENT_DANGER)
+            self.lbl_msg.config(text=t("otp_test_empty"), fg=DarkTheme.ACCENT_DANGER)
             return
 
         if verify_totp(self.secret, code):
-            messagebox.showinfo("성공", "동반자 OTP가 정상적으로 등록 및 검증되었습니다.", parent=self)
+            messagebox.showinfo(t("save_success_title"), t("otp_test_success"), parent=self)
             self.destroy()
             self.on_complete(self.secret)
         else:
-            self.lbl_msg.config(text="번호가 일치하지 않습니다. 다시 확인하세요.", fg=DarkTheme.ACCENT_DANGER)
+            self.lbl_msg.config(text=t("otp_err_mismatch"), fg=DarkTheme.ACCENT_DANGER)
 
 
 class SettingsWindow(tk.Tk):
@@ -256,12 +256,13 @@ class SettingsWindow(tk.Tk):
         self.on_config_updated = on_config_updated
         self.config = load_config()
 
-        self.title("DBjara - LoL 솔로 랭크 통제기")
-        self.geometry("560x760")
+        self.title(t("app_title"))
+        self.geometry("560x820")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
 
         self._init_variables()
+        self.main_frame = None
         self._build_ui()
         self.center_window()
 
@@ -274,6 +275,7 @@ class SettingsWindow(tk.Tk):
         self.geometry(f"{w}x{h}+{x}+{y}")
 
     def _init_variables(self):
+        self.var_lang = tk.StringVar(value=self.config.get("language", "ko"))
         self.var_mode = tk.StringVar(value=self.config.get("mode", "medium"))
         self.var_daily_limit = tk.IntVar(value=self.config.get("daily_limit_minutes", 120))
         self.var_night_lock = tk.BooleanVar(value=self.config.get("night_lock", True))
@@ -288,18 +290,22 @@ class SettingsWindow(tk.Tk):
         self.otp_secret = self.config.get("otp_secret", "")
 
     def _build_ui(self):
-        main = tk.Frame(self, bg=DarkTheme.BG_DARK, padx=20, pady=16)
-        main.pack(fill=tk.BOTH, expand=True)
+        if self.main_frame:
+            self.main_frame.destroy()
+
+        self.title(t("app_title"))
+        self.main_frame = tk.Frame(self, bg=DarkTheme.BG_DARK, padx=20, pady=16)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
 
         # 상단 헤더
-        head = tk.Frame(main, bg=DarkTheme.BG_DARK)
-        head.pack(fill=tk.X, pady=(0, 12))
+        head = tk.Frame(self.main_frame, bg=DarkTheme.BG_DARK)
+        head.pack(fill=tk.X, pady=(0, 10))
 
         title_row = tk.Frame(head, bg=DarkTheme.BG_DARK)
         title_row.pack(fill=tk.X)
 
         title = tk.Label(
-            title_row, text="DBjara (디비자라)", font=("Malgun Gothic", 15, "bold"),
+            title_row, text=t("app_name"), font=("Malgun Gothic", 15, "bold"),
             bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MAIN
         )
         title.pack(side=tk.LEFT)
@@ -310,28 +316,42 @@ class SettingsWindow(tk.Tk):
         )
         lbl_ver.pack(side=tk.LEFT, padx=8)
 
+        # 언어 선택 콤보박스
+        lang_frame = tk.Frame(title_row, bg=DarkTheme.BG_DARK)
+        lang_frame.pack(side=tk.RIGHT)
+
+        lbl_l = tk.Label(lang_frame, text="🌐", font=("Segoe UI Emoji", 10), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED)
+        lbl_l.pack(side=tk.LEFT, padx=(0, 4))
+
+        cb_lang = ttk.Combobox(
+            lang_frame, textvariable=self.var_lang, values=["ko", "en"],
+            state="readonly", width=5
+        )
+        cb_lang.pack(side=tk.LEFT)
+        cb_lang.bind("<<ComboboxSelected>>", self._on_language_changed)
+
         btn_update = tk.Button(
-            title_row, text="업데이트 확인", font=("Malgun Gothic", 8),
+            title_row, text=t("btn_update_check"), font=("Malgun Gothic", 8),
             bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0, padx=6, pady=2,
             cursor="hand2", command=self.check_update_manual
         )
-        btn_update.pack(side=tk.RIGHT)
+        btn_update.pack(side=tk.RIGHT, padx=6)
 
         sub = tk.Label(
-            head, text="친구와의 게임은 즐겁게, 혼자만의 밤샘 솔랭은 강력하게 통제합니다.",
-            font=("Malgun Gothic", 8), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED
+            head, text=t("app_sub"), font=("Malgun Gothic", 8),
+            bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED
         )
         sub.pack(anchor="w", pady=(2, 0))
 
         # 섹션 1: 통제 강도 설정
         card1 = tk.LabelFrame(
-            main, text=" 통제 강도 설정 ", font=("Malgun Gothic", 9, "bold"),
+            self.main_frame, text=t("sec_mode"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
         card1.pack(fill=tk.X, pady=(0, 8))
 
         r_high = tk.Radiobutton(
-            card1, text="상 (High): 롤 실행 자체 차단", variable=self.var_mode, value="high",
+            card1, text=t("mode_high"), variable=self.var_mode, value="high",
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN, command=self._on_mode_change
@@ -339,7 +359,7 @@ class SettingsWindow(tk.Tk):
         r_high.pack(anchor="w")
 
         r_med = tk.Radiobutton(
-            card1, text="중 (Medium): 솔로(1인) 플레이 금지 (권장)", variable=self.var_mode, value="medium",
+            card1, text=t("mode_medium"), variable=self.var_mode, value="medium",
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN, command=self._on_mode_change
@@ -347,7 +367,7 @@ class SettingsWindow(tk.Tk):
         r_med.pack(anchor="w")
 
         r_low = tk.Radiobutton(
-            card1, text="하 (Low): 일일 솔로 시간 제한", variable=self.var_mode, value="low",
+            card1, text=t("mode_low"), variable=self.var_mode, value="low",
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN, command=self._on_mode_change
@@ -356,7 +376,10 @@ class SettingsWindow(tk.Tk):
 
         self.frame_low_opts = tk.Frame(card1, bg=DarkTheme.BG_CARD)
         self.frame_low_opts.pack(fill=tk.X, padx=16, pady=(2, 4))
-        self.lbl_limit = tk.Label(self.frame_low_opts, text=f"하루 최대 솔로 시간: {self.var_daily_limit.get()}분", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.ACCENT_PRIMARY)
+        self.lbl_limit = tk.Label(
+            self.frame_low_opts, text=t("daily_limit_label", minutes=self.var_daily_limit.get()),
+            font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.ACCENT_PRIMARY
+        )
         self.lbl_limit.pack(anchor="w")
         self.scale_limit = ttk.Scale(self.frame_low_opts, from_=30, to=240, variable=self.var_daily_limit, command=self._on_slider_change)
         self.scale_limit.pack(fill=tk.X)
@@ -364,13 +387,13 @@ class SettingsWindow(tk.Tk):
 
         # 섹션 2: 야간 시간 통제
         card2 = tk.LabelFrame(
-            main, text=" 야간 시간 강제 차단 (디비자라 모드) ", font=("Malgun Gothic", 9, "bold"),
+            self.main_frame, text=t("sec_night"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
         card2.pack(fill=tk.X, pady=(0, 8))
 
         chk_night = tk.Checkbutton(
-            card2, text="야간 시간대 게임 완전 차단 (동반자 무관 강제 종료)", variable=self.var_night_lock,
+            card2, text=t("night_lock_chk"), variable=self.var_night_lock,
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN
@@ -379,63 +402,62 @@ class SettingsWindow(tk.Tk):
 
         time_row = tk.Frame(card2, bg=DarkTheme.BG_CARD)
         time_row.pack(fill=tk.X, pady=(4, 0), padx=16)
-        lbl_t1 = tk.Label(time_row, text="차단 시작:", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
+        lbl_t1 = tk.Label(time_row, text=t("night_start"), font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
         lbl_t1.pack(side=tk.LEFT)
         entry_n_start = tk.Entry(time_row, textvariable=self.var_night_start, width=6, justify=tk.CENTER, bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0)
         entry_n_start.pack(side=tk.LEFT, padx=4)
-        lbl_t2 = tk.Label(time_row, text="~ 종료:", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
+        lbl_t2 = tk.Label(time_row, text=t("night_end"), font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
         lbl_t2.pack(side=tk.LEFT, padx=(10, 0))
         entry_n_end = tk.Entry(time_row, textvariable=self.var_night_end, width=6, justify=tk.CENTER, bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0)
         entry_n_end.pack(side=tk.LEFT, padx=4)
 
         # 섹션 3: 동반자 OTP & 부팅 설정
         card3 = tk.LabelFrame(
-            main, text=" 자제력 자물쇠 (동반자 OTP & 자동 실행) ", font=("Malgun Gothic", 9, "bold"),
+            self.main_frame, text=t("sec_lock"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
         card3.pack(fill=tk.X, pady=(0, 8))
 
         chk_otp = tk.Checkbutton(
-            card3, text="동반자 OTP 자물쇠 활성화 (설정 변경/앱 종료 시 OTP 요구)",
-            variable=self.var_otp_enabled, font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD,
-            fg=DarkTheme.TEXT_MAIN, selectcolor=DarkTheme.BG_CARD_LIGHT,
-            activebackground=DarkTheme.BG_CARD, activeforeground=DarkTheme.TEXT_MAIN,
-            command=self._on_otp_toggle
+            card3, text=t("otp_chk"), variable=self.var_otp_enabled,
+            font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
+            activeforeground=DarkTheme.TEXT_MAIN, command=self._on_otp_toggle
         )
         chk_otp.pack(anchor="w")
 
         self.btn_otp_setup = tk.Button(
-            card3, text="동반자 등록 QR / 비밀키 보기", font=("Malgun Gothic", 8),
+            card3, text=t("otp_view_btn"), font=("Malgun Gothic", 8),
             bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0, padx=8, pady=3,
             cursor="hand2", command=self.open_otp_setup
         )
         self.btn_otp_setup.pack(anchor="w", padx=16, pady=(3, 4))
 
         chk_auto = tk.Checkbutton(
-            card3, text="윈도우 부팅 시 자동 실행 (백그라운드 상시 감시)",
-            variable=self.var_auto_start, font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD,
-            fg=DarkTheme.TEXT_MAIN, selectcolor=DarkTheme.BG_CARD_LIGHT,
-            activebackground=DarkTheme.BG_CARD, activeforeground=DarkTheme.TEXT_MAIN
+            card3, text=t("auto_start_chk"), variable=self.var_auto_start,
+            font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
+            activeforeground=DarkTheme.TEXT_MAIN
         )
         chk_auto.pack(anchor="w")
 
         # 섹션 4: Riot ID 전적 검증
         card4 = tk.LabelFrame(
-            main, text=" Riot ID 전적 검증 (PC방 몰래 솔랭 방지) ", font=("Malgun Gothic", 9, "bold"),
+            self.main_frame, text=t("sec_riot"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
         card4.pack(fill=tk.X, pady=(0, 8))
 
         lbl_riot_desc = tk.Label(
-            card4, text="소환사 Riot ID를 등록하면 PC방 등 외부에서 몰래 솔랭한 기록도 감지합니다.",
-            font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED
+            card4, text=t("riot_desc"), font=("Malgun Gothic", 8),
+            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED
         )
         lbl_riot_desc.pack(anchor="w")
 
         riot_row = tk.Frame(card4, bg=DarkTheme.BG_CARD)
         riot_row.pack(fill=tk.X, pady=(4, 2))
 
-        lbl_rid = tk.Label(riot_row, text="Riot ID (이름#태그):", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN)
+        lbl_rid = tk.Label(riot_row, text=t("riot_id_label"), font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN)
         lbl_rid.pack(side=tk.LEFT)
 
         entry_rid = tk.Entry(
@@ -446,35 +468,40 @@ class SettingsWindow(tk.Tk):
 
         # 섹션 5: 통계 및 자동 업데이트 설정
         card5 = tk.LabelFrame(
-            main, text=" 통계 및 업데이트 설정 ", font=("Malgun Gothic", 9, "bold"),
+            self.main_frame, text=t("sec_meta"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
         card5.pack(fill=tk.X, pady=(0, 10))
 
         chk_telem = tk.Checkbutton(
-            card5, text="익명 사용 통계 전송 동의 (차단 횟수 등 비식별 데이터)",
-            variable=self.var_telemetry, font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD,
-            fg=DarkTheme.TEXT_MAIN, selectcolor=DarkTheme.BG_CARD_LIGHT,
-            activebackground=DarkTheme.BG_CARD, activeforeground=DarkTheme.TEXT_MAIN
+            card5, text=t("telemetry_chk"), variable=self.var_telemetry,
+            font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
+            activeforeground=DarkTheme.TEXT_MAIN
         )
         chk_telem.pack(anchor="w")
 
         chk_au = tk.Checkbutton(
-            card5, text="프로그램 시작 시 최신 버전 자동 확인",
-            variable=self.var_auto_update, font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD,
-            fg=DarkTheme.TEXT_MAIN, selectcolor=DarkTheme.BG_CARD_LIGHT,
-            activebackground=DarkTheme.BG_CARD, activeforeground=DarkTheme.TEXT_MAIN
+            card5, text=t("auto_update_chk"), variable=self.var_auto_update,
+            font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
+            activeforeground=DarkTheme.TEXT_MAIN
         )
         chk_au.pack(anchor="w")
 
         # 저장 버튼
         btn_save = tk.Button(
-            main, text="설정 저장 및 적용", font=("Malgun Gothic", 10, "bold"),
+            self.main_frame, text=t("btn_save"), font=("Malgun Gothic", 10, "bold"),
             bg=DarkTheme.ACCENT_PRIMARY, fg="white", activebackground=DarkTheme.ACCENT_HOVER,
             activeforeground="white", bd=0, relief=tk.FLAT, pady=6, cursor="hand2",
             command=self.request_save
         )
         btn_save.pack(fill=tk.X)
+
+    def _on_language_changed(self, event=None):
+        new_lang = self.var_lang.get()
+        set_language(new_lang)
+        self._build_ui()
 
     def _on_mode_change(self):
         if self.var_mode.get() == "low":
@@ -483,7 +510,7 @@ class SettingsWindow(tk.Tk):
             self.frame_low_opts.pack_forget()
 
     def _on_slider_change(self, val):
-        self.lbl_limit.config(text=f"하루 최대 솔로 시간: {int(float(val))}분")
+        self.lbl_limit.config(text=t("daily_limit_label", minutes=int(float(val))))
 
     def _on_otp_toggle(self):
         if self.var_otp_enabled.get() and not self.otp_secret:
@@ -501,13 +528,13 @@ class SettingsWindow(tk.Tk):
             has_update, tag, body, url = get_latest_version_info()
             if has_update:
                 if messagebox.askyesno(
-                    "새 버전 발견",
-                    f"새로운 버전 ({tag})이 출시되었습니다.\n\n다운로드 페이지를 여시겠습니까?",
+                    t("update_found_title"),
+                    t("update_found_msg", tag=tag),
                     parent=self
                 ):
                     open_release_page(url)
             else:
-                messagebox.showinfo("최신 버전", f"현재 최신 버전({CURRENT_VERSION})을 사용 중입니다.", parent=self)
+                messagebox.showinfo(t("update_latest_title"), t("update_latest_msg", version=CURRENT_VERSION), parent=self)
         threading.Thread(target=_check, daemon=True).start()
 
     def request_save(self):
@@ -518,6 +545,7 @@ class SettingsWindow(tk.Tk):
 
     def _do_save(self):
         new_config = {
+            "language": self.var_lang.get(),
             "mode": self.var_mode.get(),
             "daily_limit_minutes": int(self.var_daily_limit.get()),
             "night_lock": self.var_night_lock.get(),
@@ -542,7 +570,7 @@ class SettingsWindow(tk.Tk):
         if self.on_config_updated:
             self.on_config_updated(new_config)
 
-        messagebox.showinfo("저장 완료", "설정이 성공적으로 저장 및 적용되었습니다.", parent=self)
+        messagebox.showinfo(t("save_success_title"), t("save_success_msg"), parent=self)
         self.destroy()
 
 
