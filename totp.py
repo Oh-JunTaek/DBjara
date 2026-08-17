@@ -1,5 +1,5 @@
 """
-TOTP (Time-based One-Time Password) Engine
+TOTP (Time-based One-Time Password) Engine for DBjara
 RFC 6238 / RFC 4226 implementation using standard Python libraries.
 """
 
@@ -20,9 +20,7 @@ def generate_secret(length: int = 16) -> str:
 
 def _get_hotp_token(secret: str, intervals_no: int, digits: int = 6) -> str:
     """Calculate HOTP token for a given counter interval."""
-    # Normalize secret (remove spaces, upper case)
     clean_secret = secret.replace(" ", "").upper()
-    # Add padding if necessary
     padding = len(clean_secret) % 8
     if padding != 0:
         clean_secret += "=" * (8 - padding)
@@ -64,14 +62,13 @@ def verify_totp(
 
 
 def get_otpauth_uri(
-    secret: str, account_name: str = "User", issuer: str = "dbjara"
+    secret: str, account_name: str = "User", issuer: str = "DBjara"
 ) -> str:
     """Generate otpauth:// URI for Google Authenticator QR Code scanning."""
     return f"otpauth://totp/{issuer}:{account_name}?secret={secret}&issuer={issuer}&algorithm=SHA1&digits=6&period=30"
 
 
 if __name__ == "__main__":
-    # Self-test
     key = generate_secret()
     token = get_totp_token(key)
     print(f"Generated Secret: {key}")

@@ -1,5 +1,5 @@
 """
-Configuration and Persistence Manager for dbjara
+Configuration and Persistence Manager for DBjara
 """
 
 import os
@@ -10,7 +10,7 @@ from datetime import datetime
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-APP_NAME = "dbjara"
+APP_NAME = "DBjara"
 
 DEFAULT_CONFIG = {
     "mode": "medium",  # "high", "medium", "low"
@@ -65,12 +65,10 @@ def set_auto_start(enabled: bool) -> bool:
             winreg.HKEY_CURRENT_USER, REG_KEY, 0, winreg.KEY_ALL_ACCESS
         )
         if enabled:
-            # Command to launch background app
             python_exe = sys.executable
             app_script = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "app.py"
             )
-            # Use pythonw.exe if available to hide terminal window on startup
             pythonw_exe = os.path.join(
                 os.path.dirname(python_exe), "pythonw.exe"
             )

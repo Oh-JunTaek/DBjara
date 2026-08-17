@@ -1,6 +1,6 @@
 """
-Watchdog process for dbjara
-Monitors the main dbjara app.py and relaunches it if it gets killed unexpectedly.
+Watchdog process for DBjara
+Monitors the main DBjara app.py and relaunches it if it gets killed unexpectedly.
 """
 
 import sys
@@ -22,7 +22,7 @@ def main():
         try:
             if not psutil.pid_exists(main_pid):
                 # Main app died unexpectedly without killing watchdog -> Revive!
-                print("[Watchdog] Main app process disappeared. Relaunching dbjara...")
+                print("[Watchdog] Main app process disappeared. Relaunching DBjara...")
                 subprocess.Popen(
                     [python_exe, app_script],
                     creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0

@@ -1,5 +1,5 @@
 """
-dbjara (디비자라) Main Application
+DBjara (디비자라) Main Application
 System Tray Background Monitor for League of Legends Solo Rank Blocker.
 """
 
@@ -28,7 +28,7 @@ def create_tray_icon_image() -> Image.Image:
     # Circle background (Dark Blue)
     draw.ellipse((4, 4, 60, 60), fill=(26, 30, 36, 255), outline=(59, 130, 246, 255), width=3)
 
-    # Crescent Moon shape for "dbjara" (Sleep/Night)
+    # Crescent Moon shape for "DBjara" (Sleep/Night)
     draw.ellipse((16, 14, 48, 46), fill=(243, 244, 246, 255))
     draw.ellipse((22, 12, 54, 44), fill=(26, 30, 36, 255))
 
@@ -41,7 +41,7 @@ def create_tray_icon_image() -> Image.Image:
     return img
 
 
-class DBJaraApp:
+class DBjaraApp:
     def __init__(self):
         self.config = load_config()
         self.lcu = LCUClient()
@@ -82,7 +82,7 @@ class DBJaraApp:
 
     def monitor_loop(self):
         """Core background monitoring loop."""
-        print("[dbjara] Background monitoring loop started.")
+        print("[DBjara] Background monitoring loop started.")
         last_save_time = time.time()
 
         while self.running:
@@ -91,7 +91,7 @@ class DBJaraApp:
                 if self.config.get("night_lock", True) and self.is_in_night_time():
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
-                        self.notify("🌙 디비자라 - 야간 강제 차단", "야간 시간대입니다! 게임이 즉시 종료되었습니다. 어서 주무세요.")
+                        self.notify("🌙 DBjara - 야간 강제 차단", "야간 시간대입니다! 게임이 즉시 종료되었습니다. 어서 주무세요.")
                         time.sleep(2)
                         continue
 
@@ -100,7 +100,7 @@ class DBJaraApp:
                 if mode == "high":
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
-                        self.notify("🛑 디비자라 - 실행 차단", "통제 강도 [상] 설정으로 인해 롤 실행이 차단되었습니다.")
+                        self.notify("🛑 DBjara - 실행 차단", "통제 강도 [상] 설정으로 인해 롤 실행이 차단되었습니다.")
                         time.sleep(2)
                         continue
 
@@ -117,7 +117,7 @@ class DBJaraApp:
                             if party_size == 1:
                                 if search_state == "Searching" or phase in ("Matchmaking", "ReadyCheck"):
                                     if self.lcu.cancel_matchmaking():
-                                        self.notify("🚫 디비자라 - 솔로 매칭 취소", "1인 솔로 랭크 매칭이 감지되어 취소되었습니다!\n(2인 이상 다인큐만 가능합니다)")
+                                        self.notify("🚫 DBjara - 솔로 매칭 취소", "1인 솔로 랭크 매칭이 감지되어 취소되었습니다!\n(2인 이상 다인큐만 가능합니다)")
 
                         # Low Mode: Daily Play Time Tracking
                         elif mode == "low":
@@ -128,13 +128,13 @@ class DBJaraApp:
 
                                 if self.config["daily_played_seconds"] >= limit_sec:
                                     self.lcu.kill_league_client()
-                                    self.notify("⏰ 디비자라 - 일일 시간 초과", f"오늘의 솔로 허용 시간({self.config.get('daily_limit_minutes')}분)을 모두 소진하여 종료되었습니다.")
+                                    self.notify("⏰ DBjara - 일일 시간 초과", f"오늘의 솔로 허용 시간({self.config.get('daily_limit_minutes')}분)을 모두 소진하여 종료되었습니다.")
 
                             elif party_size == 1 and (search_state == "Searching" or phase in ("Matchmaking", "ReadyCheck")):
                                 limit_sec = self.config.get("daily_limit_minutes", 120) * 60
                                 if self.config.get("daily_played_seconds", 0) >= limit_sec:
                                     self.lcu.cancel_matchmaking()
-                                    self.notify("⏰ 디비자라 - 솔로 매칭 차단", "오늘의 일일 솔로 허용 시간을 모두 초과하여 매칭이 차단되었습니다.")
+                                    self.notify("⏰ DBjara - 솔로 매칭 차단", "오늘의 일일 솔로 허용 시간을 모두 초과하여 매칭이 차단되었습니다.")
 
                 # Save play time every 30 seconds
                 if time.time() - last_save_time > 30:
@@ -142,7 +142,7 @@ class DBJaraApp:
                     last_save_time = time.time()
 
             except Exception as e:
-                print(f"[dbjara] Monitor Loop error: {e}")
+                print(f"[DBjara] Monitor Loop error: {e}")
 
             time.sleep(1.0)
 
@@ -157,7 +157,7 @@ class DBJaraApp:
                     creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 )
         except Exception as e:
-            print(f"[dbjara] Failed to launch watchdog: {e}")
+            print(f"[DBjara] Failed to launch watchdog: {e}")
 
     def on_config_updated(self, new_config: dict):
         """Callback when user saves new settings from GUI."""
@@ -166,7 +166,6 @@ class DBJaraApp:
     def open_settings_ui(self):
         """Open Settings Window with OTP authorization if required."""
         if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
-            # Create hidden root for dialog
             import tkinter as tk
             root = tk.Tk()
             root.withdraw()
@@ -229,18 +228,18 @@ class DBJaraApp:
         menu = pystray.Menu(
             pystray.MenuItem(get_status_text, None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("⚙️ 설정 열기 (디비자라)", lambda: threading.Thread(target=self.open_settings_ui, daemon=True).start()),
+            pystray.MenuItem("⚙️ 설정 열기 (DBjara)", lambda: threading.Thread(target=self.open_settings_ui, daemon=True).start()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("❌ 디비자라 종료", lambda: threading.Thread(target=self.request_exit, daemon=True).start()),
+            pystray.MenuItem("❌ DBjara 종료", lambda: threading.Thread(target=self.request_exit, daemon=True).start()),
         )
 
         icon_image = create_tray_icon_image()
-        self.tray_icon = pystray.Icon("dbjara", icon_image, "디비자라 (dbjara) - LoL 통제기", menu)
+        self.tray_icon = pystray.Icon("DBjara", icon_image, "디비자라 (DBjara) - LoL 통제기", menu)
 
-        print("[dbjara] Tray icon is running. Check system tray.")
+        print("[DBjara] Tray icon is running. Check system tray.")
         self.tray_icon.run()
 
 
 if __name__ == "__main__":
-    app = DBJaraApp()
+    app = DBjaraApp()
     app.run()

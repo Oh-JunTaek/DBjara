@@ -1,5 +1,5 @@
 """
-Modern Tkinter GUI for dbjara
+Modern Tkinter GUI for DBjara
 Provides Settings Window, Companion OTP Management, and Verification Dialogs.
 """
 
@@ -37,7 +37,7 @@ class OTPAuthDialog(tk.Toplevel):
         super().__init__(parent)
         self.secret = secret
         self.on_success = on_success
-        self.title("동반자 OTP 인증 - 디비자라")
+        self.title("동반자 OTP 인증 - 디비자라(DBjara)")
         self.geometry("380x280")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
@@ -127,7 +127,7 @@ class OTPSetupDialog(tk.Toplevel):
         super().__init__(parent)
         self.secret = current_secret if current_secret else generate_secret()
         self.on_complete = on_complete
-        self.title("동반자 등록 (Google Authenticator) - 디비자라")
+        self.title("동반자 등록 (Google Authenticator) - DBjara")
         self.geometry("450x580")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
@@ -253,14 +253,14 @@ class OTPSetupDialog(tk.Toplevel):
 
 
 class SettingsWindow(tk.Tk):
-    """Main Settings Window for dbjara."""
+    """Main Settings Window for DBjara."""
 
     def __init__(self, on_config_updated: Optional[Callable[[dict], None]] = None):
         super().__init__()
         self.on_config_updated = on_config_updated
         self.config = load_config()
 
-        self.title("디비자라 (dbjara) - LoL 솔로 랭크 통제기")
+        self.title("디비자라 (DBjara) - LoL 솔로 랭크 통제기")
         self.geometry("520x680")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
@@ -296,7 +296,7 @@ class SettingsWindow(tk.Tk):
         head.pack(fill=tk.X, pady=(0, 16))
 
         title = tk.Label(
-            head, text="🌙 디비자라 (dbjara)", font=("Malgun Gothic", 16, "bold"),
+            head, text="🌙 디비자라 (DBjara)", font=("Malgun Gothic", 16, "bold"),
             bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MAIN
         )
         title.pack(anchor="w")
@@ -438,7 +438,6 @@ class SettingsWindow(tk.Tk):
 
     def _on_otp_toggle(self):
         if self.var_otp_enabled.get() and not self.otp_secret:
-            # Need to setup secret first
             self.open_otp_setup()
 
     def open_otp_setup(self):
@@ -450,7 +449,6 @@ class SettingsWindow(tk.Tk):
 
     def request_save(self):
         """Save settings, requiring OTP if it was previously enabled."""
-        # If OTP was enabled in loaded config, user must verify before changing settings
         if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
             OTPAuthDialog(self, self.config.get("otp_secret"), on_success=self._do_save)
         else:
