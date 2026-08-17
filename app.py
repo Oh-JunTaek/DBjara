@@ -1,6 +1,6 @@
 """
-DBjara (디비자라) Main Application
-System Tray Background Monitor for League of Legends Solo Rank Blocker.
+DBjara (디비자라) 메인 애플리케이션
+롤 솔로 랭크 차단 및 야간 강제 종료를 수행하는 시스템 트레이 백그라운드 서비스입니다.
 """
 
 import os
@@ -24,18 +24,18 @@ from riot_api import RiotAPIValidator
 
 
 def create_tray_icon_image() -> Image.Image:
-    """Generate a clean moon/shield icon for system tray."""
+    """시스템 트레이용 아이콘 이미지를 동적으로 생성합니다."""
     img = Image.new("RGBA", (64, 64), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Circle background (Dark Blue)
+    # 원형 배경 (다크 블루)
     draw.ellipse((4, 4, 60, 60), fill=(26, 30, 36, 255), outline=(59, 130, 246, 255), width=3)
 
-    # Crescent Moon shape for "DBjara" (Sleep/Night)
+    # 달 모양 (수면/야간 상징)
     draw.ellipse((16, 14, 48, 46), fill=(243, 244, 246, 255))
     draw.ellipse((22, 12, 54, 44), fill=(26, 30, 36, 255))
 
-    # Star accent
+    # 별 포인트
     draw.point((42, 20), fill=(59, 130, 246, 255))
     draw.point((44, 22), fill=(59, 130, 246, 255))
     draw.point((40, 22), fill=(59, 130, 246, 255))
@@ -54,11 +54,11 @@ class DBjaraApp:
         self.watchdog_process: Optional[subprocess.Popen] = None
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
 
-        # Send anonymous startup event
+        # 앱 실행 익명 이벤트 전송
         send_event_async(self.config, "app_start")
 
     def is_in_night_time(self) -> bool:
-        """Check if current system time falls into night lock range."""
+        """현재 시각이 야간 차단 시간대에 해당하는지 확인합니다."""
         try:
             start_h, start_m = map(int, self.config.get("night_start", "23:00").split(":"))
             end_h, end_m = map(int, self.config.get("night_end", "07:00").split(":"))
@@ -67,7 +67,7 @@ class DBjaraApp:
             t_start = dtime(start_h, start_m)
             t_end = dtime(end_h, end_m)
 
-            if t_start > t_end:  # Crosses midnight (e.g. 23:00 -> 07:00)
+            if t_start > t_end:  # 자정을 넘는 경우 (예: 23:00 ~ 07:00)
                 return now >= t_start or now <= t_end
             else:
                 return t_start <= now <= t_end
@@ -75,7 +75,7 @@ class DBjaraApp:
             return False
 
     def notify(self, title: str, message: str):
-        """Send notification via system tray with throttle."""
+        """시스템 트레이 알림을 전송합니다. (단시간 연속 알림 방지)"""
         now = time.time()
         if now - self.last_notification_time < 5:
             return
@@ -88,43 +88,43 @@ class DBjaraApp:
                 pass
 
     def check_updates_async(self):
-        """Check for updates on startup if enabled."""
+        """프로그램 시작 시 최신 버전 업데이트 여부를 비동기로 확인합니다."""
         if not self.config.get("auto_update_check", True):
             return
 
         def _check():
             has_update, tag, _, url = get_latest_version_info()
             if has_update:
-                self.notify("🎉 DBjara 새 버전 업데이트 알림", f"새로운 버전 ({tag})이 출시되었습니다!\n트레이 메뉴의 설정을 열어 확인하세요.")
+                self.notify("DBjara 새 버전 업데이트 알림", f"새로운 버전 ({tag})이 출시되었습니다.\n트레이 메뉴의 설정을 열어 확인하세요.")
         threading.Thread(target=_check, daemon=True).start()
 
     def monitor_loop(self):
-        """Core background monitoring loop."""
-        print("[DBjara] Background monitoring loop started.")
+        """핵심 백그라운드 감시 루프입니다."""
+        print("[DBjara] 백그라운드 감시 루프가 시작되었습니다.")
         last_save_time = time.time()
 
         while self.running:
             try:
-                # 1. Check Night Lock (Highest Priority - '디비자라' 모드)
+                # 1. 야간 차단 체크 (최우선 순위 - 디비자라 모드)
                 if self.config.get("night_lock", True) and self.is_in_night_time():
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
-                        self.notify("🌙 DBjara - 야간 강제 차단", "야간 시간대입니다! 게임이 즉시 종료되었습니다. 어서 주무세요.")
+                        self.notify("DBjara - 야간 강제 차단", "야간 시간대입니다. 게임이 즉시 종료되었습니다. 어서 주무세요.")
                         send_event_async(self.config, "block_night")
                         time.sleep(2)
                         continue
 
-                # 2. Check High Mode (Block Game Entirely)
+                # 2. '상' 모드 체크 (게임 실행 자체 차단)
                 mode = self.config.get("mode", "medium")
                 if mode == "high":
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
-                        self.notify("🛑 DBjara - 실행 차단", "통제 강도 [상] 설정으로 인해 롤 실행이 차단되었습니다.")
+                        self.notify("DBjara - 실행 차단", "통제 강도 [상] 설정으로 인해 롤 실행이 차단되었습니다.")
                         send_event_async(self.config, "block_high")
                         time.sleep(2)
                         continue
 
-                # 3. Check Medium & Low Modes (LCU API Control)
+                # 3. '중' 및 '하' 모드 체크 (LCU API 제어)
                 if self.lcu.is_league_running():
                     connected = self.lcu.is_connected() or self.lcu.connect()
                     if connected:
@@ -132,44 +132,44 @@ class DBjaraApp:
                         search_state = self.lcu.get_matchmaking_search_state()
                         phase = self.lcu.get_gameflow_phase()
 
-                        # Medium Mode: Solo Queue Cancel
+                        # '중' 모드: 1인 솔로 큐 매칭 즉시 취소
                         if mode == "medium":
                             if party_size == 1:
                                 if search_state == "Searching" or phase in ("Matchmaking", "ReadyCheck"):
                                     if self.lcu.cancel_matchmaking():
-                                        self.notify("🚫 DBjara - 솔로 매칭 취소", "1인 솔로 랭크 매칭이 감지되어 취소되었습니다!\n(2인 이상 다인큐만 가능합니다)")
+                                        self.notify("DBjara - 솔로 매칭 취소", "1인 솔로 랭크 매칭이 감지되어 취소되었습니다.\n(2인 이상 다인큐만 가능합니다)")
                                         send_event_async(self.config, "block_solo_cancel")
 
-                        # Low Mode: Daily Play Time Tracking
+                        # '하' 모드: 일일 솔로 시간 누적 및 제한
                         elif mode == "low":
                             if party_size == 1 and phase == "InProgress":
-                                # Accumulate solo play seconds
+                                # 솔로 플레이 진행 시간(초) 누적
                                 self.config["daily_played_seconds"] = self.config.get("daily_played_seconds", 0) + 1
                                 limit_sec = self.config.get("daily_limit_minutes", 120) * 60
 
                                 if self.config["daily_played_seconds"] >= limit_sec:
                                     self.lcu.kill_league_client()
-                                    self.notify("⏰ DBjara - 일일 시간 초과", f"오늘의 솔로 허용 시간({self.config.get('daily_limit_minutes')}분)을 모두 소진하여 종료되었습니다.")
+                                    self.notify("DBjara - 일일 시간 초과", f"오늘의 솔로 허용 시간({self.config.get('daily_limit_minutes')}분)을 모두 소진하여 종료되었습니다.")
                                     send_event_async(self.config, "block_time_limit")
 
                             elif party_size == 1 and (search_state == "Searching" or phase in ("Matchmaking", "ReadyCheck")):
                                 limit_sec = self.config.get("daily_limit_minutes", 120) * 60
                                 if self.config.get("daily_played_seconds", 0) >= limit_sec:
                                     self.lcu.cancel_matchmaking()
-                                    self.notify("⏰ DBjara - 솔로 매칭 차단", "오늘의 일일 솔로 허용 시간을 모두 초과하여 매칭이 차단되었습니다.")
+                                    self.notify("DBjara - 솔로 매칭 차단", "오늘의 일일 솔로 허용 시간을 초과하여 매칭이 차단되었습니다.")
 
-                # Save play time every 30 seconds
+                # 30초마다 설정 및 누적 플레이 시간 저장
                 if time.time() - last_save_time > 30:
                     save_config(self.config)
                     last_save_time = time.time()
 
             except Exception as e:
-                print(f"[DBjara] Monitor Loop error: {e}")
+                print(f"[DBjara] 감시 루프 오류: {e}")
 
             time.sleep(1.0)
 
     def launch_watchdog(self):
-        """Launch background watchdog process to prevent force termination."""
+        """강제 종료 방지를 위한 Watchdog 프로세스를 백그라운드로 실행합니다."""
         try:
             watchdog_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "watchdog.py")
             if os.path.exists(watchdog_script):
@@ -179,15 +179,15 @@ class DBjaraApp:
                     creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 )
         except Exception as e:
-            print(f"[DBjara] Failed to launch watchdog: {e}")
+            print(f"[DBjara] Watchdog 실행 실패: {e}")
 
     def on_config_updated(self, new_config: dict):
-        """Callback when user saves new settings from GUI."""
+        """GUI에서 사용자가 설정을 변경하고 저장했을 때의 콜백입니다."""
         self.config = new_config
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
 
     def open_settings_ui(self):
-        """Open Settings Window with OTP authorization if required."""
+        """설정 창을 엽니다. (OTP가 활성화되어 있으면 먼저 인증을 요구)"""
         if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
             import tkinter as tk
             root = tk.Tk()
@@ -207,7 +207,7 @@ class DBjaraApp:
         win.mainloop()
 
     def request_exit(self):
-        """Exit application, requiring OTP verification if enabled."""
+        """프로그램 종료를 요청합니다. (OTP가 활성화되어 있으면 인증 필요)"""
         if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
             import tkinter as tk
             root = tk.Tk()
@@ -235,17 +235,17 @@ class DBjaraApp:
         sys.exit(0)
 
     def run(self):
-        # 1. Start watchdog
+        # 1. Watchdog 시작
         self.launch_watchdog()
 
-        # 2. Check updates on launch
+        # 2. 시작 시 업데이트 확인
         self.check_updates_async()
 
-        # 3. Start monitoring background thread
+        # 3. 백그라운드 모니터링 스레드 시작
         monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
         monitor_thread.start()
 
-        # 4. Setup System Tray Menu
+        # 4. 시스템 트레이 메뉴 구성
         def get_status_text(item):
             mode_names = {"high": "상 (전체 차단)", "medium": "중 (솔로 금지)", "low": "하 (시간 제한)"}
             m_str = mode_names.get(self.config.get("mode", "medium"), "중")
@@ -254,16 +254,16 @@ class DBjaraApp:
         menu = pystray.Menu(
             pystray.MenuItem(get_status_text, None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("⚙️ 설정 열기 (DBjara)", lambda: threading.Thread(target=self.open_settings_ui, daemon=True).start()),
-            pystray.MenuItem("🔄 업데이트 확인", lambda: threading.Thread(target=lambda: open_release_page(), daemon=True).start()),
+            pystray.MenuItem("설정 열기 (DBjara)", lambda: threading.Thread(target=self.open_settings_ui, daemon=True).start()),
+            pystray.MenuItem("업데이트 확인", lambda: threading.Thread(target=lambda: open_release_page(), daemon=True).start()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("❌ DBjara 종료", lambda: threading.Thread(target=self.request_exit, daemon=True).start()),
+            pystray.MenuItem("DBjara 종료", lambda: threading.Thread(target=self.request_exit, daemon=True).start()),
         )
 
         icon_image = create_tray_icon_image()
         self.tray_icon = pystray.Icon("DBjara", icon_image, "디비자라 (DBjara) - LoL 통제기", menu)
 
-        print("[DBjara] Tray icon is running. Check system tray.")
+        print("[DBjara] 시스템 트레이 아이콘이 실행되었습니다.")
         self.tray_icon.run()
 
 

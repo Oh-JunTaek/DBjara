@@ -1,6 +1,6 @@
 """
-Riot Games API Cross-Validation Module for DBjara
-Inspects recent match history (e.g. PC Cafe offline bypass detection) via Riot Match-V5 API.
+DBjara - 라이엇 공식 API 전적 교차 검증 모듈
+Riot Match-V5 API를 통해 최근 솔로 랭크 플레이 내역(PC방 등 외부 플레이)을 감지합니다.
 """
 
 import json
@@ -17,7 +17,7 @@ class RiotAPIValidator:
         self.platform = platform.lower()
 
     def get_puuid_by_riot_id(self, game_name: str, tag_line: str) -> Optional[str]:
-        """Fetch PUUID by Riot ID (GameName#TagLine) via Riot Account-V1."""
+        """Riot ID(소환사명#태그)로 Riot Account-V1 API를 호출하여 PUUID를 조회합니다."""
         if not self.api_key:
             return None
 
@@ -35,20 +35,20 @@ class RiotAPIValidator:
                     data = json.loads(resp.read().decode("utf-8"))
                     return data.get("puuid")
         except Exception as e:
-            print(f"[RiotAPI] Error fetching PUUID: {e}")
+            print(f"[RiotAPI] PUUID 조회 오류: {e}")
         return None
 
     def get_recent_solo_matches(
         self, puuid: str, start_time_epoch: Optional[int] = None, count: int = 5
     ) -> List[str]:
         """
-        Fetch recent Ranked Solo matches (Queue 420).
-        Optionally filter matches created after start_time_epoch (in seconds).
+        최근 솔로 랭크(Queue 420) 매치 ID 목록을 조회합니다.
+        start_time_epoch(초 단위 타임스탬프) 이후의 게임만 필터링 가능합니다.
         """
         if not self.api_key or not puuid:
             return []
 
-        # queue=420 is Ranked Solo 5v5
+        # queue=420: 솔로 랭크 5v5
         url = f"https://{self.region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?queue=420&count={count}"
         if start_time_epoch:
             url += f"&startTime={start_time_epoch}"
@@ -64,15 +64,15 @@ class RiotAPIValidator:
                     if isinstance(matches, list):
                         return matches
         except Exception as e:
-            print(f"[RiotAPI] Error fetching matches: {e}")
+            print(f"[RiotAPI] 매치 목록 조회 오류: {e}")
         return []
 
     def check_for_illicit_solo_games(
         self, riot_id_full: str, start_time_epoch: int
     ) -> Tuple[bool, int, List[str]]:
         """
-        Check if any solo rank matches were played since start_time_epoch.
-        Returns (has_illicit_games, count_of_games, match_ids)
+        특정 기준 시각 이후에 플레이된 솔로 랭크 게임이 있는지 검증합니다.
+        반환값: (위반_게임_존재_여부, 판수, 매치_ID_목록)
         """
         if not self.api_key or "#" not in riot_id_full:
             return False, 0, []
