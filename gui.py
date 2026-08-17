@@ -1,14 +1,15 @@
 """
 Modern Tkinter GUI for DBjara
-Provides Settings Window, Companion OTP Management, and Verification Dialogs.
+Provides Settings Window, Companion OTP Management, Riot ID Validation, and Update Checking.
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-import io
+import threading
 from typing import Optional, Callable
 from config import load_config, save_config, set_auto_start
 from totp import generate_secret, verify_totp, get_otpauth_uri
+from updater import get_latest_version_info, open_release_page, CURRENT_VERSION
 
 try:
     import qrcode
@@ -24,7 +25,8 @@ class DarkTheme:
     BG_CARD_LIGHT = "#242a33"
     ACCENT_PRIMARY = "#3b82f6"  # Blue
     ACCENT_HOVER = "#2563eb"
-    ACCENT_DANGER = "#ef4444"   # Red for night/hard block
+    ACCENT_SUCCESS = "#10b981"  # Green
+    ACCENT_DANGER = "#ef4444"   # Red
     TEXT_MAIN = "#f3f4f6"
     TEXT_MUTED = "#9ca3af"
     BORDER = "#2e3744"
@@ -37,7 +39,7 @@ class OTPAuthDialog(tk.Toplevel):
         super().__init__(parent)
         self.secret = secret
         self.on_success = on_success
-        self.title("동반자 OTP 인증 - 디비자라(DBjara)")
+        self.title("동반자 OTP 인증 - DBjara")
         self.geometry("380x280")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
@@ -261,7 +263,7 @@ class SettingsWindow(tk.Tk):
         self.config = load_config()
 
         self.title("디비자라 (DBjara) - LoL 솔로 랭크 통제기")
-        self.geometry("520x680")
+        self.geometry("560x780")
         self.resizable(False, False)
         self.configure(bg=DarkTheme.BG_DARK)
 
@@ -285,36 +287,56 @@ class SettingsWindow(tk.Tk):
         self.var_night_end = tk.StringVar(value=self.config.get("night_end", "07:00"))
         self.var_otp_enabled = tk.BooleanVar(value=self.config.get("otp_enabled", False))
         self.var_auto_start = tk.BooleanVar(value=self.config.get("auto_start", False))
+        self.var_riot_id = tk.StringVar(value=self.config.get("riot_id", ""))
+        self.var_riot_key = tk.StringVar(value=self.config.get("riot_api_key", ""))
+        self.var_telemetry = tk.BooleanVar(value=self.config.get("telemetry_enabled", True))
+        self.var_auto_update = tk.BooleanVar(value=self.config.get("auto_update_check", True))
         self.otp_secret = self.config.get("otp_secret", "")
 
     def _build_ui(self):
-        main = tk.Frame(self, bg=DarkTheme.BG_DARK, padx=24, pady=20)
+        # Create Canvas and Scrollbar for comfortable view
+        main = tk.Frame(self, bg=DarkTheme.BG_DARK, padx=20, pady=16)
         main.pack(fill=tk.BOTH, expand=True)
 
         # Header
         head = tk.Frame(main, bg=DarkTheme.BG_DARK)
-        head.pack(fill=tk.X, pady=(0, 16))
+        head.pack(fill=tk.X, pady=(0, 12))
+
+        title_row = tk.Frame(head, bg=DarkTheme.BG_DARK)
+        title_row.pack(fill=tk.X)
 
         title = tk.Label(
-            head, text="🌙 디비자라 (DBjara)", font=("Malgun Gothic", 16, "bold"),
+            title_row, text="🌙 디비자라 (DBjara)", font=("Malgun Gothic", 15, "bold"),
             bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MAIN
         )
-        title.pack(anchor="w")
+        title.pack(side=tk.LEFT)
+
+        lbl_ver = tk.Label(
+            title_row, text=f"{CURRENT_VERSION}", font=("Consolas", 9, "bold"),
+            bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.ACCENT_PRIMARY, padx=6, pady=2
+        )
+        lbl_ver.pack(side=tk.LEFT, padx=8)
+
+        btn_update = tk.Button(
+            title_row, text="🔄 업데이트 확인", font=("Malgun Gothic", 8),
+            bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0, padx=6, pady=2,
+            cursor="hand2", command=self.check_update_manual
+        )
+        btn_update.pack(side=tk.RIGHT)
 
         sub = tk.Label(
             head, text="친구와의 게임은 즐겁게, 혼자만의 밤샘 솔랭은 강력하게 통제합니다.",
-            font=("Malgun Gothic", 9), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED
+            font=("Malgun Gothic", 8), bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED
         )
-        sub.pack(anchor="w")
+        sub.pack(anchor="w", pady=(2, 0))
 
         # Section 1: 통제 강도 설정
         card1 = tk.LabelFrame(
-            main, text=" 🛡️ 통제 강도 설정 ", font=("Malgun Gothic", 10, "bold"),
-            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=14, pady=10
+            main, text=" 🛡️ 통제 강도 설정 ", font=("Malgun Gothic", 9, "bold"),
+            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
-        card1.pack(fill=tk.X, pady=(0, 12))
+        card1.pack(fill=tk.X, pady=(0, 8))
 
-        # Mode High
         r_high = tk.Radiobutton(
             card1, text="상 (High): 롤 실행 자체 차단", variable=self.var_mode, value="high",
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
@@ -322,10 +344,7 @@ class SettingsWindow(tk.Tk):
             activeforeground=DarkTheme.TEXT_MAIN, command=self._on_mode_change
         )
         r_high.pack(anchor="w")
-        lbl_h_desc = tk.Label(card1, text="  └ 롤 클라이언트 실행 즉시 프로세스를 강제 종료합니다.", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
-        lbl_h_desc.pack(anchor="w", pady=(0, 6))
 
-        # Mode Medium
         r_med = tk.Radiobutton(
             card1, text="중 (Medium): 솔로(1인) 플레이 금지 (권장 ⭐)", variable=self.var_mode, value="medium",
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
@@ -333,10 +352,7 @@ class SettingsWindow(tk.Tk):
             activeforeground=DarkTheme.TEXT_MAIN, command=self._on_mode_change
         )
         r_med.pack(anchor="w")
-        lbl_m_desc = tk.Label(card1, text="  └ 1인 큐 매칭 시 즉시 매칭 취소! (2인 이상 다인큐만 허용)", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
-        lbl_m_desc.pack(anchor="w", pady=(0, 6))
 
-        # Mode Low
         r_low = tk.Radiobutton(
             card1, text="하 (Low): 일일 솔로 시간 제한", variable=self.var_mode, value="low",
             font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
@@ -347,24 +363,18 @@ class SettingsWindow(tk.Tk):
 
         self.frame_low_opts = tk.Frame(card1, bg=DarkTheme.BG_CARD)
         self.frame_low_opts.pack(fill=tk.X, padx=16, pady=(2, 4))
-
         self.lbl_limit = tk.Label(self.frame_low_opts, text=f"하루 최대 솔로 시간: {self.var_daily_limit.get()}분", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.ACCENT_PRIMARY)
         self.lbl_limit.pack(anchor="w")
-
-        self.scale_limit = ttk.Scale(
-            self.frame_low_opts, from_=30, to=240, variable=self.var_daily_limit,
-            command=self._on_slider_change
-        )
+        self.scale_limit = ttk.Scale(self.frame_low_opts, from_=30, to=240, variable=self.var_daily_limit, command=self._on_slider_change)
         self.scale_limit.pack(fill=tk.X)
-
         self._on_mode_change()
 
         # Section 2: 야간 시간 통제
         card2 = tk.LabelFrame(
-            main, text=" 🌙 야간 시간 강제 차단 (디비자라 모드) ", font=("Malgun Gothic", 10, "bold"),
-            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=14, pady=10
+            main, text=" 🌙 야간 시간 강제 차단 (디비자라 모드) ", font=("Malgun Gothic", 9, "bold"),
+            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
-        card2.pack(fill=tk.X, pady=(0, 12))
+        card2.pack(fill=tk.X, pady=(0, 8))
 
         chk_night = tk.Checkbutton(
             card2, text="야간 시간대 게임 완전 차단 (동반자 무관 강제 종료)", variable=self.var_night_lock,
@@ -375,24 +385,22 @@ class SettingsWindow(tk.Tk):
         chk_night.pack(anchor="w")
 
         time_row = tk.Frame(card2, bg=DarkTheme.BG_CARD)
-        time_row.pack(fill=tk.X, pady=(6, 0), padx=16)
-
-        lbl_t1 = tk.Label(time_row, text="차단 시작:", font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
+        time_row.pack(fill=tk.X, pady=(4, 0), padx=16)
+        lbl_t1 = tk.Label(time_row, text="차단 시작:", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
         lbl_t1.pack(side=tk.LEFT)
         entry_n_start = tk.Entry(time_row, textvariable=self.var_night_start, width=6, justify=tk.CENTER, bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0)
         entry_n_start.pack(side=tk.LEFT, padx=4)
-
-        lbl_t2 = tk.Label(time_row, text="~ 종료:", font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
+        lbl_t2 = tk.Label(time_row, text="~ 종료:", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED)
         lbl_t2.pack(side=tk.LEFT, padx=(10, 0))
         entry_n_end = tk.Entry(time_row, textvariable=self.var_night_end, width=6, justify=tk.CENTER, bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0)
         entry_n_end.pack(side=tk.LEFT, padx=4)
 
         # Section 3: 동반자 OTP & 부팅 설정
         card3 = tk.LabelFrame(
-            main, text=" 🔒 자제력 자물쇠 (동반자 OTP & 자동 실행) ", font=("Malgun Gothic", 10, "bold"),
-            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=14, pady=10
+            main, text=" 🔒 자제력 자물쇠 (동반자 OTP & 자동 실행) ", font=("Malgun Gothic", 9, "bold"),
+            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
-        card3.pack(fill=tk.X, pady=(0, 16))
+        card3.pack(fill=tk.X, pady=(0, 8))
 
         chk_otp = tk.Checkbutton(
             card3, text="동반자 OTP 자물쇠 활성화 (설정 변경/앱 종료 시 OTP 요구)",
@@ -405,10 +413,10 @@ class SettingsWindow(tk.Tk):
 
         self.btn_otp_setup = tk.Button(
             card3, text="📱 동반자 등록 QR / 비밀키 보기", font=("Malgun Gothic", 8),
-            bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0, padx=8, pady=4,
+            bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0, padx=8, pady=3,
             cursor="hand2", command=self.open_otp_setup
         )
-        self.btn_otp_setup.pack(anchor="w", padx=16, pady=(4, 6))
+        self.btn_otp_setup.pack(anchor="w", padx=16, pady=(3, 4))
 
         chk_auto = tk.Checkbutton(
             card3, text="윈도우 부팅 시 자동 실행 (백그라운드 상시 감시)",
@@ -418,11 +426,59 @@ class SettingsWindow(tk.Tk):
         )
         chk_auto.pack(anchor="w")
 
+        # Section 4: Riot ID 전적 검증 (PC방 우회 방지)
+        card4 = tk.LabelFrame(
+            main, text=" 🔍 Riot ID 전적 검증 (PC방 몰래 솔랭 방지) ", font=("Malgun Gothic", 9, "bold"),
+            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
+        )
+        card4.pack(fill=tk.X, pady=(0, 8))
+
+        lbl_riot_desc = tk.Label(
+            card4, text="소환사 Riot ID를 등록하면 PC방 등 외부에서 몰래 솔랭한 기록도 감지합니다.",
+            font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED
+        )
+        lbl_riot_desc.pack(anchor="w")
+
+        riot_row = tk.Frame(card4, bg=DarkTheme.BG_CARD)
+        riot_row.pack(fill=tk.X, pady=(4, 2))
+
+        lbl_rid = tk.Label(riot_row, text="Riot ID (이름#태그):", font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN)
+        lbl_rid.pack(side=tk.LEFT)
+
+        entry_rid = tk.Entry(
+            riot_row, textvariable=self.var_riot_id, width=22,
+            bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0
+        )
+        entry_rid.pack(side=tk.LEFT, padx=6)
+
+        # Section 5: 통계 및 자동 업데이트 설정
+        card5 = tk.LabelFrame(
+            main, text=" 📊 통계 & 업데이트 설정 ", font=("Malgun Gothic", 9, "bold"),
+            bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=12, pady=6
+        )
+        card5.pack(fill=tk.X, pady=(0, 10))
+
+        chk_telem = tk.Checkbutton(
+            card5, text="익명 사용 통계 전송 동의 (차단 횟수 등 비식별 데이터)",
+            variable=self.var_telemetry, font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD,
+            fg=DarkTheme.TEXT_MAIN, selectcolor=DarkTheme.BG_CARD_LIGHT,
+            activebackground=DarkTheme.BG_CARD, activeforeground=DarkTheme.TEXT_MAIN
+        )
+        chk_telem.pack(anchor="w")
+
+        chk_au = tk.Checkbutton(
+            card5, text="프로그램 시작 시 최신 버전 자동 확인",
+            variable=self.var_auto_update, font=("Malgun Gothic", 8), bg=DarkTheme.BG_CARD,
+            fg=DarkTheme.TEXT_MAIN, selectcolor=DarkTheme.BG_CARD_LIGHT,
+            activebackground=DarkTheme.BG_CARD, activeforeground=DarkTheme.TEXT_MAIN
+        )
+        chk_au.pack(anchor="w")
+
         # Save Button
         btn_save = tk.Button(
-            main, text="설정 저장 및 적용", font=("Malgun Gothic", 11, "bold"),
+            main, text="설정 저장 및 적용", font=("Malgun Gothic", 10, "bold"),
             bg=DarkTheme.ACCENT_PRIMARY, fg="white", activebackground=DarkTheme.ACCENT_HOVER,
-            activeforeground="white", bd=0, relief=tk.FLAT, pady=8, cursor="hand2",
+            activeforeground="white", bd=0, relief=tk.FLAT, pady=6, cursor="hand2",
             command=self.request_save
         )
         btn_save.pack(fill=tk.X)
@@ -447,8 +503,21 @@ class SettingsWindow(tk.Tk):
         self.otp_secret = new_secret
         self.var_otp_enabled.set(True)
 
+    def check_update_manual(self):
+        def _check():
+            has_update, tag, body, url = get_latest_version_info()
+            if has_update:
+                if messagebox.askyesno(
+                    "새 버전 발견",
+                    f"새로운 버전 ({tag})이 출시되었습니다!\n\n다운로드 페이지를 여시겠습니까?",
+                    parent=self
+                ):
+                    open_release_page(url)
+            else:
+                messagebox.showinfo("최신 버전", f"현재 최신 버전({CURRENT_VERSION})을 사용 중입니다.", parent=self)
+        threading.Thread(target=_check, daemon=True).start()
+
     def request_save(self):
-        """Save settings, requiring OTP if it was previously enabled."""
         if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
             OTPAuthDialog(self, self.config.get("otp_secret"), on_success=self._do_save)
         else:
@@ -464,6 +533,11 @@ class SettingsWindow(tk.Tk):
             "otp_enabled": self.var_otp_enabled.get(),
             "otp_secret": self.otp_secret,
             "auto_start": self.var_auto_start.get(),
+            "riot_id": self.var_riot_id.get().strip(),
+            "riot_api_key": self.var_riot_key.get().strip(),
+            "telemetry_enabled": self.var_telemetry.get(),
+            "auto_update_check": self.var_auto_update.get(),
+            "telemetry_uuid": self.config.get("telemetry_uuid", ""),
             "daily_played_date": self.config.get("daily_played_date"),
             "daily_played_seconds": self.config.get("daily_played_seconds", 0),
         }

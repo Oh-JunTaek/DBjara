@@ -23,6 +23,12 @@ DEFAULT_CONFIG = {
     "daily_played_date": datetime.now().strftime("%Y-%m-%d"),
     "daily_played_seconds": 0,
     "auto_start": False,
+    # New features
+    "riot_id": "",  # e.g. "Hide on bush#KR1"
+    "riot_api_key": "",  # Optional Riot Developer API key
+    "telemetry_enabled": True,  # Anonymous usage statistics
+    "telemetry_uuid": "",
+    "auto_update_check": True,  # Check for updates on startup
 }
 
 
