@@ -1,0 +1,12 @@
+{
+    "mode": "medium",
+    "daily_limit_minutes": 120,
+    "night_lock": true,
+    "night_start": "23:00",
+    "night_end": "07:00",
+    "otp_enabled": false,
+    "otp_secret": "",
+    "daily_played_date": "2026-08-17",
+    "daily_played_seconds": 0,
+    "auto_start": false
+}
