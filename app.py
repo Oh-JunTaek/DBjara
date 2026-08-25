@@ -63,9 +63,8 @@ class DBjaraApp:
         self.watchdog_process: Optional[subprocess.Popen] = None
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
         
-        # 시간제한 사전 알림 전송 여부 플래그
+        # 시간제한 사전 알림 전송 여부 플래그 (10분전 1회만)
         self.warned_10min = False
-        self.warned_5min = False
         
         # 현재 세션이 1인 솔로 세션인지 추적하는 상태 변수
         self.current_session_is_solo = True
@@ -120,7 +119,7 @@ class DBjaraApp:
         threading.Thread(target=_check, daemon=True).start()
 
     def monitor_loop(self):
-        """핵심 백그라운드 감시 루프입니다. (매칭 속도를 위해 0.15초 주기로 고속 감시)"""
+        """핵심 백그라운드 감시 루프입니다. (0.15초 고속 주기)"""
         print("[DBjara] 백그라운드 감시 루프가 시작되었습니다.")
         last_save_time = time.time()
         last_second_tick = time.time()
@@ -170,16 +169,15 @@ class DBjaraApp:
                                         self.notify(t("notif_solo_title"), t("notif_solo_msg"))
                                         send_event_async(self.config, "block_solo_cancel")
 
-                        # '하' 모드: 일일 솔로 시간 정확한 누적 및 차단/사전 알림
+                        # '하' 모드: 시간제한 (진행 중인 판은 종료하지 않고 끝까지 허용, 완료 후 새 매칭 전면 차단)
                         elif mode == "low":
                             limit_sec = self.config.get("daily_limit_minutes", 120) * 60
 
-                            # 매 1초마다 실시간 플레이 시간 정확히 누적
+                            # 매 1초마다 인게임/픽창 동안 솔로 플레이 시간 정확히 누적
                             if now_sec - last_second_tick >= 1.0:
                                 delta = int(now_sec - last_second_tick)
                                 last_second_tick = now_sec
 
-                                # 게임 인게임 진행 중이거나 챔피언 선택 중일 때 솔로 세션이면 시간 누적
                                 if self.current_session_is_solo and phase in ("ChampSelect", "InProgress", "GameStart", "Reconnect"):
                                     self.config["daily_played_seconds"] = self.config.get("daily_played_seconds", 0) + delta
 
@@ -187,27 +185,17 @@ class DBjaraApp:
                                     remaining_sec = max(0, limit_sec - played_sec)
                                     remaining_min = remaining_sec // 60
 
-                                    # 10분 전 사전 알림
-                                    if remaining_min <= 10 and remaining_min > 5 and not self.warned_10min:
+                                    # 10분 이하 남았을 때 사전 경고 알림 (이번 판이 마지막 판)
+                                    if remaining_min <= 10 and not self.warned_10min:
                                         self.warned_10min = True
-                                        self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg", left=10))
+                                        self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg", left=remaining_min))
 
-                                    # 5분 전 사전 알림
-                                    elif remaining_min <= 5 and remaining_min > 0 and not self.warned_5min:
-                                        self.warned_5min = True
-                                        self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg", left=5))
-
-                                    # 허용 시간 초과 시 강제 종료
-                                    if played_sec >= limit_sec:
-                                        self.lcu.kill_league_client()
-                                        self.notify(t("notif_time_title"), t("notif_time_msg", minutes=self.config.get("daily_limit_minutes")))
+                            # 일일 시간 초과 상태일 때 새 매칭을 돌리려고 하면 (솔로/다인큐 불문 전면 차단!)
+                            if self.config.get("daily_played_seconds", 0) >= limit_sec:
+                                if search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck"):
+                                    if self.lcu.cancel_matchmaking():
+                                        self.notify(t("notif_solo_title"), t("notif_time_block_msg"))
                                         send_event_async(self.config, "block_time_limit")
-
-                            # 솔로 매칭 시도 시 시간 초과 상태라면 매칭 취소
-                            if self.current_session_is_solo and (search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck")):
-                                if self.config.get("daily_played_seconds", 0) >= limit_sec:
-                                    self.lcu.cancel_matchmaking()
-                                    self.notify(t("notif_solo_title"), t("notif_time_block_msg"))
 
                 # 30초마다 설정 및 누적 플레이 시간 자동 저장
                 if now_sec - last_save_time > 30:
@@ -217,7 +205,6 @@ class DBjaraApp:
             except Exception as e:
                 print(f"[DBjara] 감시 루프 오류: {e}")
 
-            # 0.15초 고속 주기 감시 (빠른 0.5초 매칭도 반응하여 취소)
             time.sleep(0.15)
 
     def launch_watchdog(self):
@@ -238,8 +225,6 @@ class DBjaraApp:
         self.config = new_config
         set_language(self.config.get("language", "ko"))
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
-        self.warned_10min = False
-        self.warned_5min = False
 
     def open_settings_ui(self):
         """설정 창을 엽니다. (OTP가 활성화되어 있으면 먼저 인증을 요구)"""

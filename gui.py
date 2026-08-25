@@ -6,6 +6,7 @@ i18n 다국어 지원 (한국어 / English) 및 고가독성 다크 테마 UI를
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
+from datetime import datetime
 from typing import Optional, Callable
 from config import load_config, save_config, set_auto_start
 from totp import generate_secret, verify_totp, get_otpauth_uri
@@ -311,6 +312,13 @@ class SettingsWindow(tk.Tk):
         self.var_auto_update = tk.BooleanVar(value=self.config.get("auto_update_check", True))
         self.otp_secret = self.config.get("otp_secret", "")
 
+        # 당일 시간 변경 잠금 체크
+        today = datetime.now().strftime("%Y-%m-%d")
+        self.is_time_locked_today = (
+            self.config.get("daily_limit_locked_date") == today
+            or self.config.get("daily_played_seconds", 0) > 0
+        )
+
     def _build_ui(self):
         if self.main_frame:
             self.main_frame.destroy()
@@ -360,7 +368,7 @@ class SettingsWindow(tk.Tk):
         btn_update.pack(side=tk.RIGHT, padx=8)
 
         sub = tk.Label(
-            head, text=t("app_sub"), font=("Malgun Gothic", 9.5),
+            head, text=t("app_sub"), font=("Malgun Gothic", 9),
             bg=DarkTheme.BG_DARK, fg=DarkTheme.TEXT_MUTED
         )
         sub.pack(anchor="w", pady=(3, 0))
@@ -396,7 +404,7 @@ class SettingsWindow(tk.Tk):
         )
         r_low.pack(anchor="w", pady=2)
 
-        # '하' 모드 선택 시 30분 단위 드롭다운 콤보박스 (세련된 UI)
+        # '하' 모드 선택 시 30분 단위 드롭다운 콤보박스
         self.frame_low_opts = tk.Frame(card1, bg=DarkTheme.BG_CARD)
         self.frame_low_opts.pack(fill=tk.X, padx=18, pady=(4, 6))
         
@@ -406,7 +414,6 @@ class SettingsWindow(tk.Tk):
         )
         lbl_time_sel.pack(side=tk.LEFT, padx=(0, 10))
 
-        # 현재 저장된 분에 맞춰 디스플레이 텍스트 선택
         display_texts = [item[0] for item in self.TIME_OPTIONS]
         current_minutes = self.var_daily_limit.get()
         selected_display = display_texts[3] # default 120min
@@ -415,12 +422,20 @@ class SettingsWindow(tk.Tk):
                 selected_display = disp
                 break
 
+        cb_state = "disabled" if self.is_time_locked_today else "readonly"
         self.cb_time_limit = ttk.Combobox(
-            self.frame_low_opts, values=display_texts, state="readonly", width=18, font=("Malgun Gothic", 10)
+            self.frame_low_opts, values=display_texts, state=cb_state, width=18, font=("Malgun Gothic", 10)
         )
         self.cb_time_limit.set(selected_display)
         self.cb_time_limit.pack(side=tk.LEFT)
         self.cb_time_limit.bind("<<ComboboxSelected>>", self._on_time_combobox_changed)
+
+        if self.is_time_locked_today:
+            lbl_lock_notice = tk.Label(
+                self.frame_low_opts, text="(당일 시간 변경 불가)",
+                font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.ACCENT_DANGER
+            )
+            lbl_lock_notice.pack(side=tk.LEFT, padx=8)
 
         self._on_mode_change()
 
@@ -469,14 +484,14 @@ class SettingsWindow(tk.Tk):
 
         chk_otp = tk.Checkbutton(
             card3, text=t("otp_chk"), variable=self.var_otp_enabled,
-            font=("Malgun Gothic", 10.5), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            font=("Malgun Gothic", 10), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN, command=self._on_otp_toggle
         )
         chk_otp.pack(anchor="w")
 
         self.btn_otp_setup = tk.Button(
-            card3, text=t("otp_view_btn"), font=("Malgun Gothic", 9.5, "bold"),
+            card3, text=t("otp_view_btn"), font=("Malgun Gothic", 9, "bold"),
             bg=DarkTheme.BG_CARD_LIGHT, fg=DarkTheme.TEXT_MAIN, bd=0, padx=10, pady=4,
             cursor="hand2", command=self.open_otp_setup
         )
@@ -484,7 +499,7 @@ class SettingsWindow(tk.Tk):
 
         chk_auto = tk.Checkbutton(
             card3, text=t("auto_start_chk"), variable=self.var_auto_start,
-            font=("Malgun Gothic", 10.5), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            font=("Malgun Gothic", 10), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN
         )
@@ -498,7 +513,7 @@ class SettingsWindow(tk.Tk):
         card4.pack(fill=tk.X, pady=(0, 10))
 
         lbl_riot_desc = tk.Label(
-            card4, text=t("riot_desc"), font=("Malgun Gothic", 9.5),
+            card4, text=t("riot_desc"), font=("Malgun Gothic", 9),
             bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MUTED
         )
         lbl_riot_desc.pack(anchor="w")
@@ -506,7 +521,7 @@ class SettingsWindow(tk.Tk):
         riot_row = tk.Frame(card4, bg=DarkTheme.BG_CARD)
         riot_row.pack(fill=tk.X, pady=(5, 2))
 
-        lbl_rid = tk.Label(riot_row, text=t("riot_id_label"), font=("Malgun Gothic", 9.5, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN)
+        lbl_rid = tk.Label(riot_row, text=t("riot_id_label"), font=("Malgun Gothic", 9, "bold"), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN)
         lbl_rid.pack(side=tk.LEFT)
 
         entry_rid = tk.Entry(
@@ -524,7 +539,7 @@ class SettingsWindow(tk.Tk):
 
         chk_telem = tk.Checkbutton(
             card5, text=t("telemetry_chk"), variable=self.var_telemetry,
-            font=("Malgun Gothic", 9.5), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN
         )
@@ -532,7 +547,7 @@ class SettingsWindow(tk.Tk):
 
         chk_au = tk.Checkbutton(
             card5, text=t("auto_update_chk"), variable=self.var_auto_update,
-            font=("Malgun Gothic", 9.5), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
+            font=("Malgun Gothic", 9), bg=DarkTheme.BG_CARD, fg=DarkTheme.TEXT_MAIN,
             selectcolor=DarkTheme.BG_CARD_LIGHT, activebackground=DarkTheme.BG_CARD,
             activeforeground=DarkTheme.TEXT_MAIN
         )
@@ -597,10 +612,12 @@ class SettingsWindow(tk.Tk):
             self._do_save()
 
     def _do_save(self):
+        today = datetime.now().strftime("%Y-%m-%d")
         new_config = {
             "language": self.var_lang.get(),
             "mode": self.var_mode.get(),
             "daily_limit_minutes": int(self.var_daily_limit.get()),
+            "daily_limit_locked_date": today, # 당일 시간 수정 잠금 날짜
             "night_lock": self.var_night_lock.get(),
             "night_start": self.var_night_start.get(),
             "night_end": self.var_night_end.get(),
