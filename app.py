@@ -1,6 +1,6 @@
 """
-DBjara (디비자라) 메인 애플리케이션
-롤 솔로 랭크 차단 및 야간 강제 종료를 수행하는 시스템 트레이 백그라운드 서비스입니다.
+DBjara 2.0 - 메인 애플리케이션 백그라운드 서비스
+복합 통제 룰셋(솔로/파티/야간 독립 제어) 및 목표 약정 기간 시스템을 실시간으로 감시합니다.
 """
 
 import os
@@ -21,7 +21,7 @@ except Exception:
 from PIL import Image, ImageDraw
 import pystray
 
-from config import load_config, save_config
+from config import load_config, save_config, is_commitment_locked
 from totp import verify_totp
 from lcu import LCUClient
 from gui import SettingsWindow, OTPAuthDialog
@@ -32,22 +32,22 @@ from i18n import t, set_language
 
 
 def create_tray_icon_image() -> Image.Image:
-    """시스템 트레이용 아이콘 이미지를 동적으로 생성합니다."""
+    """시스템 트레이용 달/방패 아이콘을 생성합니다."""
     img = Image.new("RGBA", (64, 64), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # 원형 배경 (다크 블루)
-    draw.ellipse((4, 4, 60, 60), fill=(26, 30, 36, 255), outline=(59, 130, 246, 255), width=3)
+    # 딥 슬레이트 네이비 배경
+    draw.ellipse((4, 4, 60, 60), fill=(15, 23, 42, 255), outline=(56, 189, 248, 255), width=3)
 
-    # 달 모양 (수면/야간 상징)
-    draw.ellipse((16, 14, 48, 46), fill=(243, 244, 246, 255))
-    draw.ellipse((22, 12, 54, 44), fill=(26, 30, 36, 255))
+    # 초승달 형상 (수면/통제 상징)
+    draw.ellipse((16, 14, 48, 46), fill=(248, 250, 252, 255))
+    draw.ellipse((22, 12, 54, 44), fill=(15, 23, 42, 255))
 
-    # 별 포인트
-    draw.point((42, 20), fill=(59, 130, 246, 255))
-    draw.point((44, 22), fill=(59, 130, 246, 255))
-    draw.point((40, 22), fill=(59, 130, 246, 255))
-    draw.point((42, 24), fill=(59, 130, 246, 255))
+    # 인디고 별 포인트
+    draw.point((42, 20), fill=(129, 140, 248, 255))
+    draw.point((44, 22), fill=(129, 140, 248, 255))
+    draw.point((40, 22), fill=(129, 140, 248, 255))
+    draw.point((42, 24), fill=(129, 140, 248, 255))
 
     return img
 
@@ -63,13 +63,14 @@ class DBjaraApp:
         self.watchdog_process: Optional[subprocess.Popen] = None
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
         
-        # 시간제한 사전 알림 전송 여부 플래그 (10분전 1회만)
-        self.warned_10min = False
+        # 사전 10분 전 알림 플래그
+        self.warned_solo_10min = False
+        self.warned_party_10min = False
         
-        # 현재 세션이 1인 솔로 세션인지 추적하는 상태 변수
-        self.current_session_is_solo = True
+        # 현재 활성 세션이 솔로인지 파티인지 추적
+        self.current_session_mode = "solo"  # "solo" or "party"
 
-        # 앱 실행 익명 이벤트 전송
+        # 익명 시작 통계 전송
         send_event_async(self.config, "app_start")
 
     def is_in_night_time(self) -> bool:
@@ -87,7 +88,7 @@ class DBjaraApp:
             t_start = dtime(start_h, start_m)
             t_end = dtime(end_h, end_m)
 
-            if t_start > t_end:  # 자정을 넘는 경우 (예: 23:00 ~ 07:00 또는 22:00 ~ 07:00)
+            if t_start > t_end:
                 return now >= t_start or now <= t_end
             else:
                 return t_start <= now <= t_end
@@ -95,7 +96,7 @@ class DBjaraApp:
             return False
 
     def notify(self, title: str, message: str):
-        """시스템 트레이 알림을 전송합니다. (단시간 연속 알림 방지)"""
+        """시스템 트레이 알림을 전송합니다. (단시간 연속 스팸 방지)"""
         now = time.time()
         if now - self.last_notification_time < 4:
             return
@@ -108,7 +109,7 @@ class DBjaraApp:
                 pass
 
     def check_updates_async(self):
-        """프로그램 시작 시 최신 버전 업데이트 여부를 비동기로 확인합니다."""
+        """시작 시 최신 버전을 비동기로 확인합니다."""
         if not self.config.get("auto_update_check", True):
             return
 
@@ -119,8 +120,8 @@ class DBjaraApp:
         threading.Thread(target=_check, daemon=True).start()
 
     def monitor_loop(self):
-        """핵심 백그라운드 감시 루프입니다. (0.15초 고속 주기)"""
-        print("[DBjara] 백그라운드 감시 루프가 시작되었습니다.")
+        """핵심 백그라운드 고속 감시 루프 (0.15초 주기)"""
+        print("[DBjara] 스마트 감시 루프가 활성화되었습니다.")
         last_save_time = time.time()
         last_second_tick = time.time()
 
@@ -137,17 +138,7 @@ class DBjaraApp:
                         time.sleep(1.0)
                         continue
 
-                # 2. '상' 모드 체크 (게임 실행 자체 차단)
-                mode = self.config.get("mode", "medium")
-                if mode == "high":
-                    if self.lcu.is_league_running():
-                        self.lcu.kill_league_client()
-                        self.notify(t("notif_high_title"), t("notif_high_msg"))
-                        send_event_async(self.config, "block_high")
-                        time.sleep(1.0)
-                        continue
-
-                # 3. '중' 및 '하' 모드 체크 (LCU API 고속 감시)
+                # 2. 롤 클라이언트 연결 및 매칭/플레이 상태 감시
                 if self.lcu.is_league_running():
                     connected = self.lcu.is_connected() or self.lcu.connect()
                     if connected:
@@ -155,49 +146,74 @@ class DBjaraApp:
                         search_state = self.lcu.get_matchmaking_search_state()
                         phase = self.lcu.get_gameflow_phase()
 
-                        # 파티 인원이 1명이면 솔로 세션으로 추적
-                        if party_size == 1:
-                            self.current_session_is_solo = True
-                        elif party_size >= 2:
-                            self.current_session_is_solo = False
+                        # 파티 상태 갱신
+                        if party_size >= 2:
+                            self.current_session_mode = "party"
+                        elif party_size == 1:
+                            self.current_session_mode = "solo"
 
-                        # '중' 모드: 1인 솔로 큐 매칭 감지 시 즉시 취소 (0.15초 이내 고속 취소)
-                        if mode == "medium":
-                            if self.current_session_is_solo and party_size <= 1:
-                                if search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck"):
+                        solo_rule = self.config.get("solo_rule", "block_always")
+                        party_rule = self.config.get("party_rule", "time_limit")
+                        solo_limit_sec = self.config.get("solo_limit_minutes", 60) * 60
+                        party_limit_sec = self.config.get("party_limit_minutes", 120) * 60
+
+                        is_matching = (search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck"))
+
+                        # [매칭 감지 및 차단]
+                        if is_matching:
+                            # 1인 솔로 큐 매칭 시도 시
+                            if self.current_session_mode == "solo" and party_size <= 1:
+                                if solo_rule == "block_always":
                                     if self.lcu.cancel_matchmaking():
-                                        self.notify(t("notif_solo_title"), t("notif_solo_msg"))
-                                        send_event_async(self.config, "block_solo_cancel")
+                                        self.notify(t("notif_solo_block_title"), t("notif_solo_block_msg"))
+                                        send_event_async(self.config, "block_solo_always")
 
-                        # '하' 모드: 시간제한 (진행 중인 판은 종료하지 않고 끝까지 허용, 완료 후 새 매칭 전면 차단)
-                        elif mode == "low":
-                            limit_sec = self.config.get("daily_limit_minutes", 120) * 60
+                                elif solo_rule == "time_limit":
+                                    if self.config.get("daily_solo_played_seconds", 0) >= solo_limit_sec:
+                                        if self.lcu.cancel_matchmaking():
+                                            self.notify(t("notif_solo_time_over_title"), t("notif_solo_time_over_msg"))
+                                            send_event_async(self.config, "block_solo_time_over")
 
-                            # 매 1초마다 인게임/픽창 동안 솔로 플레이 시간 정확히 누적
-                            if now_sec - last_second_tick >= 1.0:
-                                delta = int(now_sec - last_second_tick)
-                                last_second_tick = now_sec
-
-                                if self.current_session_is_solo and phase in ("ChampSelect", "InProgress", "GameStart", "Reconnect"):
-                                    self.config["daily_played_seconds"] = self.config.get("daily_played_seconds", 0) + delta
-
-                                    played_sec = self.config["daily_played_seconds"]
-                                    remaining_sec = max(0, limit_sec - played_sec)
-                                    remaining_min = remaining_sec // 60
-
-                                    # 10분 이하 남았을 때 사전 경고 알림 (이번 판이 마지막 판)
-                                    if remaining_min <= 10 and not self.warned_10min:
-                                        self.warned_10min = True
-                                        self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg", left=remaining_min))
-
-                            # 일일 시간 초과 상태일 때 새 매칭을 돌리려고 하면 (솔로/다인큐 불문 전면 차단!)
-                            if self.config.get("daily_played_seconds", 0) >= limit_sec:
-                                if search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck"):
+                            # 2인 이상 다인큐 매칭 시도 시
+                            elif self.current_session_mode == "party" or party_size >= 2:
+                                if party_rule == "block_always":
                                     if self.lcu.cancel_matchmaking():
-                                        self.notify(t("notif_solo_title"), t("notif_time_block_msg"))
-                                        send_event_async(self.config, "block_time_limit")
+                                        self.notify(t("notif_party_block_title"), t("notif_party_block_msg"))
+                                        send_event_async(self.config, "block_party_always")
 
-                # 30초마다 설정 및 누적 플레이 시간 자동 저장
+                                elif party_rule == "time_limit":
+                                    if self.config.get("daily_party_played_seconds", 0) >= party_limit_sec:
+                                        if self.lcu.cancel_matchmaking():
+                                            self.notify(t("notif_party_time_over_title"), t("notif_party_time_over_msg"))
+                                            send_event_async(self.config, "block_party_time_over")
+
+                        # [인게임 시간 누적 및 10분 전 사전 알림]
+                        if now_sec - last_second_tick >= 1.0:
+                            delta = int(now_sec - last_second_tick)
+                            last_second_tick = now_sec
+
+                            if phase in ("ChampSelect", "InProgress", "GameStart", "Reconnect"):
+                                # 솔로 플레이 진행 중
+                                if self.current_session_mode == "solo":
+                                    self.config["daily_solo_played_seconds"] = self.config.get("daily_solo_played_seconds", 0) + delta
+                                    s_played = self.config["daily_solo_played_seconds"]
+                                    if solo_rule == "time_limit":
+                                        rem = max(0, solo_limit_sec - s_played)
+                                        if rem <= 600 and not self.warned_solo_10min:
+                                            self.warned_solo_10min = True
+                                            self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg"))
+
+                                # 파티 플레이 진행 중
+                                elif self.current_session_mode == "party":
+                                    self.config["daily_party_played_seconds"] = self.config.get("daily_party_played_seconds", 0) + delta
+                                    p_played = self.config["daily_party_played_seconds"]
+                                    if party_rule == "time_limit":
+                                        rem = max(0, party_limit_sec - p_played)
+                                        if rem <= 600 and not self.warned_party_10min:
+                                            self.warned_party_10min = True
+                                            self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg"))
+
+                # 30초마다 설정 및 누적 시간 자동 저장
                 if now_sec - last_save_time > 30:
                     save_config(self.config)
                     last_save_time = now_sec
@@ -221,39 +237,29 @@ class DBjaraApp:
             print(f"[DBjara] Watchdog 실행 실패: {e}")
 
     def on_config_updated(self, new_config: dict):
-        """GUI에서 사용자가 설정을 변경하고 저장했을 때의 콜백입니다."""
+        """설정 변경 콜백"""
         self.config = new_config
         set_language(self.config.get("language", "ko"))
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
+        self.warned_solo_10min = False
+        self.warned_party_10min = False
 
     def open_settings_ui(self):
-        """설정 창을 엽니다. (OTP가 활성화되어 있으면 먼저 인증을 요구)"""
-        if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
-            import tkinter as tk
-            root = tk.Tk()
-            root.withdraw()
-            OTPAuthDialog(
-                root, self.config.get("otp_secret"),
-                on_success=lambda: self._show_settings_window(root)
-            )
-            root.mainloop()
-        else:
-            self._show_settings_window(None)
-
-    def _show_settings_window(self, temp_root):
-        if temp_root:
-            temp_root.destroy()
+        """설정 창 열기"""
         win = SettingsWindow(on_config_updated=self.on_config_updated)
         win.mainloop()
 
     def request_exit(self):
-        """프로그램 종료를 요청합니다. (OTP가 활성화되어 있으면 인증 필요)"""
-        if self.config.get("otp_enabled", False) and self.config.get("otp_secret"):
+        """프로그램 종료 요청 (약정 기간 잠금 중이거나 OTP 켜져있으면 마스터키/OTP 요구)"""
+        is_locked = is_commitment_locked(self.config)
+        has_otp = self.config.get("otp_enabled", False) and self.config.get("otp_secret")
+
+        if is_locked or has_otp:
             import tkinter as tk
             root = tk.Tk()
             root.withdraw()
             OTPAuthDialog(
-                root, self.config.get("otp_secret"),
+                root, self.config.get("otp_secret", ""),
                 on_success=lambda: self._do_exit(root)
             )
             root.mainloop()
@@ -278,7 +284,7 @@ class DBjaraApp:
         # 1. Watchdog 시작
         self.launch_watchdog()
 
-        # 2. 시작 시 업데이트 확인
+        # 2. 업데이트 비동기 확인
         self.check_updates_async()
 
         # 3. 백그라운드 모니터링 스레드 시작
@@ -287,9 +293,8 @@ class DBjaraApp:
 
         # 4. 시스템 트레이 메뉴 구성
         def get_status_text(item):
-            mode_names = {"high": t("tray_mode_high"), "medium": t("tray_mode_medium"), "low": t("tray_mode_low")}
-            m_str = mode_names.get(self.config.get("mode", "medium"), "중")
-            return f"{t('tray_status_prefix')}{m_str}"
+            plan_name = self.config.get("commitment_plan", "none")
+            return f"{t('tray_plan_prefix')}{t('tray_plan_' + plan_name)}"
 
         menu = pystray.Menu(
             pystray.MenuItem(get_status_text, None, enabled=False),
@@ -301,9 +306,9 @@ class DBjaraApp:
         )
 
         icon_image = create_tray_icon_image()
-        self.tray_icon = pystray.Icon("DBjara", icon_image, "DBjara - LoL Solo Blocker", menu)
+        self.tray_icon = pystray.Icon("DBjara", icon_image, "DBjara - LoL Control Solution", menu)
 
-        print("[DBjara] 시스템 트레이 아이콘이 실행되었습니다.")
+        print("[DBjara] 시스템 트레이 서비스가 시작되었습니다.")
         self.tray_icon.run()
 
 

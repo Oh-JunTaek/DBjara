@@ -1,41 +1,54 @@
 """
-DBjara - 설정 관리 및 윈도우 시작 프로그램 연동 모듈
+DBjara - 설정 관리 및 약정 기간 / 규칙 영구 보관 모듈
 """
 
 import os
 import json
 import winreg
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from i18n import set_language
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
 REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_NAME = "DBjara"
 
-# 기본 설정값 정의
+# DBjara 2.0 기본 설정값 정의
 DEFAULT_CONFIG = {
-    "language": "ko",  # 표시 언어 ("ko": 한국어, "en": English)
-    "mode": "medium",  # 통제 모드: "high"(전체 차단), "medium"(솔로 차단), "low"(시간 제한)
-    "daily_limit_minutes": 120,  # '하' 모드 시 일일 최대 허용 솔로 시간(분)
-    "night_lock": True,  # 야간 강제 차단 활성화 여부
-    "night_start": "23:00",  # 야간 차단 시작 시각
-    "night_end": "07:00",  # 야간 차단 종료 시각
-    "otp_enabled": False,  # 동반자 OTP 인증 활성화 여부
-    "otp_secret": "",  # 동반자 OTP 비밀키
-    "daily_played_date": datetime.now().strftime("%Y-%m-%d"),  # 플레이 누적 기준 일자
-    "daily_played_seconds": 0,  # 당일 솔로 플레이 누적 시간(초)
-    "auto_start": False,  # 윈도우 부팅 시 자동 실행 여부
-    "riot_id": "",  # 소환사 Riot ID (예: "소환사명#KR1")
-    "riot_api_key": "",  # 라이엇 개발자 API 키 (선택 사항)
-    "telemetry_enabled": True,  # 익명 사용 통계 전송 동의 여부
-    "telemetry_uuid": "",  # 익명 기기 식별자
-    "auto_update_check": True,  # 시작 시 자동 업데이트 확인 여부
+    "language": "ko",
+    # 약정 기간 설정 ("none", "1day", "7days", "30days")
+    "commitment_plan": "none",
+    "commitment_end_date": "",  # e.g. "2026-08-31 23:59:59"
+    # 1인 솔로 플레이 제어 ("block_always", "time_limit", "unlimited")
+    "solo_rule": "block_always",
+    "solo_limit_minutes": 60,
+    # 2인 이상 다인큐(파티) 제어 ("unlimited", "time_limit", "block_always")
+    "party_rule": "time_limit",
+    "party_limit_minutes": 120,
+    # 야간 강제 취침 모드
+    "night_lock": True,
+    "night_start": "23:00",
+    "night_end": "07:00",
+    # 자제력 자물쇠 및 보안
+    "otp_enabled": False,
+    "otp_secret": "",
+    # 당일 누적 시간 (초 단위)
+    "daily_played_date": datetime.now().strftime("%Y-%m-%d"),
+    "daily_solo_played_seconds": 0,
+    "daily_party_played_seconds": 0,
+    # 부팅 시 자동 실행
+    "auto_start": False,
+    # 부가 기능
+    "riot_id": "",
+    "riot_api_key": "",
+    "telemetry_enabled": True,
+    "telemetry_uuid": "",
+    "auto_update_check": True,
 }
 
 
 def load_config() -> dict:
-    """config.json 파일에서 설정을 불러옵니다. 파일이 없으면 기본값을 생성합니다."""
+    """config.json 파일에서 설정을 로드하고 날짜 변경 시 일일 누적 시간을 초기화합니다."""
     config = dict(DEFAULT_CONFIG)
     if os.path.exists(CONFIG_FILE):
         try:
@@ -43,19 +56,76 @@ def load_config() -> dict:
                 saved = json.load(f)
                 config.update(saved)
         except Exception as e:
-            print(f"[Config] 설정 파일 읽기 실패 ({CONFIG_FILE}): {e}")
+            print(f"[Config] 설정 파일 로드 오류 ({CONFIG_FILE}): {e}")
 
     # 언어 설정 반영
     set_language(config.get("language", "ko"))
 
-    # 날짜가 바뀌었을 경우 당일 누적 플레이 시간 초기화
+    # 날짜가 바뀌었을 경우 당일 누적 시간 초기화
     today = datetime.now().strftime("%Y-%m-%d")
     if config.get("daily_played_date") != today:
         config["daily_played_date"] = today
-        config["daily_played_seconds"] = 0
+        config["daily_solo_played_seconds"] = 0
+        config["daily_party_played_seconds"] = 0
         save_config(config)
 
+    # 약정 기간이 만료되었는지 확인
+    end_date_str = config.get("commitment_end_date", "")
+    if end_date_str:
+        try:
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() > end_dt:
+                # 약정 종료 ➔ 자유 모드로 전환
+                config["commitment_plan"] = "none"
+                config["commitment_end_date"] = ""
+                save_config(config)
+        except Exception:
+            pass
+
     return config
+
+
+def calculate_commitment_end_date(plan: str) -> str:
+    """선택한 약정 플랜에 따른 종료 일시를 반환합니다."""
+    now = datetime.now()
+    if plan == "1day":
+        # 오늘 자정(23:59:59)까지
+        end_dt = now.replace(hour=23, minute=59, second=59, microsecond=0)
+        return end_dt.strftime("%Y-%m-%d %H:%M:%S")
+    elif plan == "7days":
+        # 7일 후 자정까지
+        end_dt = (now + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=0)
+        return end_dt.strftime("%Y-%m-%d %H:%M:%S")
+    elif plan == "30days":
+        # 30일 후 자정까지
+        end_dt = (now + timedelta(days=29)).replace(hour=23, minute=59, second=59, microsecond=0)
+        return end_dt.strftime("%Y-%m-%d %H:%M:%S")
+    return ""
+
+
+def is_commitment_locked(config: dict) -> bool:
+    """현재 유효한 약정 잠금 기간 내에 있는지 확인합니다."""
+    end_date_str = config.get("commitment_end_date", "")
+    if not end_date_str:
+        return False
+    try:
+        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S")
+        return datetime.now() <= end_dt
+    except Exception:
+        return False
+
+
+def get_remaining_days(config: dict) -> int:
+    """약정 기간의 남은 일수를 계산합니다."""
+    end_date_str = config.get("commitment_end_date", "")
+    if not end_date_str:
+        return 0
+    try:
+        end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S")
+        delta = end_dt.date() - datetime.now().date()
+        return max(0, delta.days)
+    except Exception:
+        return 0
 
 
 def save_config(config: dict) -> bool:
@@ -81,7 +151,6 @@ def set_auto_start(enabled: bool) -> bool:
             app_script = os.path.join(
                 os.path.dirname(os.path.abspath(__file__)), "app.py"
             )
-            # 백그라운드 무창 실행을 위해 pythonw.exe 우선 사용
             pythonw_exe = os.path.join(
                 os.path.dirname(python_exe), "pythonw.exe"
             )
