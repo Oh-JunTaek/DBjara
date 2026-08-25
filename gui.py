@@ -612,7 +612,7 @@ class SettingsWindow(tk.Tk):
             plan_name = self.config.get("commitment_plan", "custom")
             lbl_status = tk.Label(
                 top_row, text=f" [{t('plan_' + plan_name)}] {t('dash_lock_until', date=end_date.split()[0])}",
-                font=("Malgun Gothic", 9.5, "bold"), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN
+                font=("Malgun Gothic", 10, "bold"), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN
             )
             lbl_status.pack(side=tk.LEFT, padx=8)
         else:
@@ -624,7 +624,7 @@ class SettingsWindow(tk.Tk):
 
             lbl_status = tk.Label(
                 top_row, text=f" 새로운 약정 목표를 설정하고 시작하세요.",
-                font=("Malgun Gothic", 9.5), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MUTED
+                font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MUTED
             )
             lbl_status.pack(side=tk.LEFT, padx=8)
 
