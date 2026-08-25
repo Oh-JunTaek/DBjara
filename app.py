@@ -1,5 +1,6 @@
 """
 DBjara 2.0 - 메인 애플리케이션 백그라운드 서비스
+복합 통제 룰셋(솔로/파티/야간 독립 제어) 및 목표 약정 기간 시스템을 실시간으로 감시합니다.
 """
 
 import os
@@ -10,11 +11,32 @@ import subprocess
 from datetime import datetime, time as dtime
 from typing import Optional
 
+# 윈도우 프로세스 이름 및 AppUserModelID 설정
 try:
     import ctypes
+    ctypes.windll.kernel32.SetConsoleTitleW("DBjara")
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DBjara.App.1.0")
 except Exception:
     pass
+
+# 단일 인스턴스 (Single Instance Mutex) 중복 실행 차단
+_mutex_handle = None
+def ensure_single_instance():
+    global _mutex_handle
+    if sys.platform == "win32":
+        try:
+            kernel32 = ctypes.windll.kernel32
+            mutex_name = "Global\\DBjara_SingleInstance_Mutex"
+            _mutex_handle = kernel32.CreateMutexW(None, True, mutex_name)
+            last_error = kernel32.GetLastError()
+            ERROR_ALREADY_EXISTS = 183
+            if last_error == ERROR_ALREADY_EXISTS:
+                print("[DBjara] 이미 DBjara 프로세스가 실행 중입니다. 중복 실행을 차단하고 종료합니다.")
+                sys.exit(0)
+        except Exception:
+            pass
+
+ensure_single_instance()
 
 from PIL import Image, ImageDraw
 import pystray
@@ -28,9 +50,11 @@ from telemetry import send_event_async
 from riot_api import RiotAPIValidator
 from i18n import t, set_language
 
+EXIT_FLAG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dbjara_exit.flag")
+
 
 def create_tray_icon_image() -> Image.Image:
-    """시스템 트레이용 아이콘 이미지"""
+    """시스템 트레이용 아이콘 이미지를 동적으로 생성합니다."""
     img = Image.new("RGBA", (64, 64), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
@@ -60,11 +84,8 @@ class DBjaraApp:
         self.warned_solo_10min = False
         self.warned_party_10min = False
         self.current_session_mode = "solo"
-        
-        # 쿨다운 휴식 타이머 관리를 위한 변수
-        self.prev_phase = "None"
-        self.last_game_ended_time = 0
 
+        # 앱 실행 익명 통계 전송
         send_event_async(self.config, "app_start")
 
     def is_in_night_time(self) -> bool:
@@ -112,7 +133,7 @@ class DBjaraApp:
         threading.Thread(target=_check, daemon=True).start()
 
     def monitor_loop(self):
-        """핵심 백그라운드 모니터링 루프"""
+        """핵심 백그라운드 모니터링 루프 (0.15초 고속 주기)"""
         print("[DBjara] 백그라운드 감시 루프가 활성화되었습니다.")
         last_save_time = time.time()
         last_second_tick = time.time()
@@ -130,18 +151,13 @@ class DBjaraApp:
                         time.sleep(1.0)
                         continue
 
-                # 2. LCU 연동 및 상태 감시
+                # 2. LCU 감시 및 조건부 차단
                 if self.lcu.is_league_running():
                     connected = self.lcu.is_connected() or self.lcu.connect()
                     if connected:
                         party_size = self.lcu.get_party_size()
                         search_state = self.lcu.get_matchmaking_search_state()
                         phase = self.lcu.get_gameflow_phase()
-
-                        # 게임 완료 지점 감지 (InProgress ➔ Lobby/None 전환 시 5분 쿨다운 시작)
-                        if self.prev_phase in ("InProgress", "ChampSelect") and phase in ("Lobby", "None", "PreEndOfGame", "EndOfGame"):
-                            self.last_game_ended_time = now_sec
-                        self.prev_phase = phase
 
                         if party_size >= 2:
                             self.current_session_mode = "party"
@@ -155,18 +171,7 @@ class DBjaraApp:
 
                         is_matching = (search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck"))
 
-                        # [스마트 멘탈 5분 휴식 쿨다운 체크]
-                        if is_matching and self.config.get("cooldown_enabled", True) and self.last_game_ended_time > 0:
-                            elapsed_cooldown = now_sec - self.last_game_ended_time
-                            if elapsed_cooldown < 300:  # 5분(300초) 이내
-                                rem_cool_min = int((300 - elapsed_cooldown) // 60) + 1
-                                if self.lcu.cancel_matchmaking():
-                                    self.notify(t("notif_cooldown_title"), t("notif_cooldown_msg", minutes=rem_cool_min))
-                                    send_event_async(self.config, "block_cooldown")
-                                    time.sleep(0.5)
-                                    continue
-
-                        # [매칭 조건부 차단]
+                        # [매칭 조건별 차단]
                         if is_matching:
                             if self.current_session_mode == "solo" and party_size <= 1:
                                 if solo_rule == "block_always":
@@ -226,6 +231,7 @@ class DBjaraApp:
             time.sleep(0.15)
 
     def launch_watchdog(self):
+        """Watchdog 프로세스 실행"""
         try:
             watchdog_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "watchdog.py")
             if os.path.exists(watchdog_script):
@@ -249,6 +255,7 @@ class DBjaraApp:
         win.mainloop()
 
     def request_exit(self):
+        """종료 요청 (약정 기간 중이거나 OTP 활성화 시 인증 필요)"""
         is_locked = is_commitment_locked(self.config)
         has_otp = self.config.get("otp_enabled", False) and self.config.get("otp_secret")
 
@@ -265,20 +272,46 @@ class DBjaraApp:
             self._do_exit(None)
 
     def _do_exit(self, temp_root):
+        """종료 수행: exit 플래그를 생성하여 watchdog 및 프로세스를 깔끔히 즉시 종료합니다."""
         if temp_root:
-            temp_root.destroy()
+            try:
+                temp_root.destroy()
+            except Exception:
+                pass
+
         self.running = False
         save_config(self.config)
+
+        # watchdog에 정상 종료 플래그 전달
+        try:
+            with open(EXIT_FLAG_FILE, "w", encoding="utf-8") as f:
+                f.write("EXIT")
+        except Exception:
+            pass
+
         if self.watchdog_process:
             try:
                 self.watchdog_process.kill()
             except Exception:
                 pass
+
         if self.tray_icon:
-            self.tray_icon.stop()
-        sys.exit(0)
+            try:
+                self.tray_icon.stop()
+            except Exception:
+                pass
+
+        # 즉시 완전 종료
+        os._exit(0)
 
     def run(self):
+        # 실행 시작 시 이전 exit 플래그 제거
+        if os.path.exists(EXIT_FLAG_FILE):
+            try:
+                os.remove(EXIT_FLAG_FILE)
+            except Exception:
+                pass
+
         self.launch_watchdog()
         self.check_updates_async()
 

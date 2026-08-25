@@ -29,8 +29,6 @@ DEFAULT_CONFIG = {
     "night_lock": True,
     "night_start": "23:00",
     "night_end": "07:00",
-    # 스마트 멘탈 쿨다운 (게임 후 5분 휴식)
-    "cooldown_enabled": True,
     # 자제력 자물쇠 및 보안
     "otp_enabled": False,
     "otp_secret": "",
@@ -77,7 +75,6 @@ def load_config() -> dict:
         try:
             end_dt = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S")
             if datetime.now() > end_dt:
-                # 약정 종료 ➔ 자유 모드로 전환
                 config["commitment_plan"] = "none"
                 config["commitment_end_date"] = ""
                 save_config(config)
