@@ -260,8 +260,12 @@ class OTPSetupDialog(tk.Toplevel):
             self.lbl_msg.config(text=t("otp_err_mismatch"), fg=SlateTheme.ACCENT_ROSE)
 
 
-class SettingsWindow(tk.Tk):
-    """DBjara 2.0 스마트 대시보드 및 복합 룰 설정 창"""
+class SettingsWindow(tk.Toplevel):
+    """DBjara 2.0 스마트 대시보드 및 복합 룰 설정 창
+    
+    반드시 tk.Tk() 루트가 이미 존재하는 상태에서 생성해야 합니다.
+    (tk.Tk는 프로세스 내 하나만 존재할 수 있으므로 Toplevel을 사용합니다)
+    """
 
     TIME_OPTIONS = [
         ("30분 (0.5시간)", 30),
@@ -277,8 +281,9 @@ class SettingsWindow(tk.Tk):
     NIGHT_START_OPTIONS = ["22:00", "22:30", "23:00", "23:30", "00:00"]
     NIGHT_END_OPTIONS = ["05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00"]
 
-    def __init__(self, on_config_updated: Optional[Callable[[dict], None]] = None):
-        super().__init__()
+    def __init__(self, parent: tk.Tk, on_config_updated: Optional[Callable[[dict], None]] = None):
+        # tk.Toplevel은 반드시 부모 Tk 루트를 넣어야 합니다
+        super().__init__(parent)
         self.on_config_updated = on_config_updated
         self.config = load_config()
 
@@ -286,6 +291,10 @@ class SettingsWindow(tk.Tk):
         self.geometry("640x890")
         self.resizable(False, False)
         self.configure(bg=SlateTheme.BG_DARK)
+
+        # 독립 창처럼 동작하도록 설정 (부모 뒤에 숨지 않게)
+        self.lift()
+        self.focus_force()
 
         self._init_variables()
         self.main_container = None
@@ -780,10 +789,16 @@ class SettingsWindow(tk.Tk):
         self._build_ui()
 
 
-def show_settings(on_config_updated=None):
-    app = SettingsWindow(on_config_updated=on_config_updated)
-    app.mainloop()
+def show_settings(parent: tk.Tk, on_config_updated=None):
+    """기존 tk.Tk 루트 위에 설정 창을 Toplevel로 띄웁니다."""
+    win = SettingsWindow(parent, on_config_updated=on_config_updated)
+    return win
 
 
 if __name__ == "__main__":
-    show_settings()
+    # 독립 실행(테스트용): 루트를 직접 만들어 실행
+    root = tk.Tk()
+    root.withdraw()
+    win = SettingsWindow(root)
+    win.protocol("WM_DELETE_WINDOW", root.destroy)
+    root.mainloop()

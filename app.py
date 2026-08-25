@@ -265,15 +265,15 @@ class DBjaraApp:
             return
         self.settings_window_active = True
 
+        def _open():
+            win = SettingsWindow(self.tk_root, on_config_updated=self.on_config_updated)
+            win.protocol("WM_DELETE_WINDOW", lambda: (win.destroy(), setattr(self, 'settings_window_active', False)))
+            # 창이 닫혔을 때 플래그 해제
+            win.bind("<Destroy>", lambda e: setattr(self, 'settings_window_active', False) if e.widget == win else None)
+        
         # 약정 잠금이나 OTP가 켜져 있는지 확인
         is_locked = is_commitment_locked(self.config)
         has_otp = self.config.get("otp_enabled", False) and self.config.get("otp_secret")
-
-        def _open():
-            win = SettingsWindow(on_config_updated=self.on_config_updated)
-            win.protocol("WM_DELETE_WINDOW", lambda: (win.destroy(), setattr(self, 'settings_window_active', False)))
-            win.mainloop()
-            self.settings_window_active = False
 
         if is_locked or has_otp:
             OTPAuthDialog(
@@ -382,8 +382,14 @@ class DBjaraApp:
 
         # 메인 스레드: Tkinter 메인 루트 이벤트 루프 가동 (스레드 안전성 100% 보장)
         self.tk_root = tk.Tk()
-        self.tk_root.withdraw()
+        self.tk_root.withdraw()  # 루트 창은 숨김
+
+        # 100ms 후 이벤트 루프 시작
         self.tk_root.after(100, self.main_thread_event_loop)
+
+        # 최초 실행 시 설정 대시보드를 자동으로 먼저 표시
+        self.tk_root.after(300, self.handle_open_settings_main_thread)
+
         self.tk_root.mainloop()
 
 
