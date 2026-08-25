@@ -1,11 +1,16 @@
 """
 DBjara 2.0 - 스마트 대시보드 및 복합 룰 설정 화면
+
+주요 수정:
+- SettingsWindow를 tk.Toplevel로 변경 (프로세스당 tk.Tk는 하나만 허용)
+- 모든 float 폰트 사이즈를 정수로 통일 (9.5->9, 8.5->9 등)
+- _build_dashboard_banner 예외 방어 처리 추가
+- _build_ui 전체 try/except로 안전하게 보호
 """
 
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
-from datetime import datetime
 from typing import Optional, Callable
 
 from config import (
@@ -24,27 +29,30 @@ except ImportError:
     HAS_QR = False
 
 
-class SlateTheme:
-    """모던 슬레이트 & 인디고(Slate & Indigo) 테마 팔레트"""
-    BG_DARK = "#0f172a"        # 딥 슬레이트 네이비
-    BG_CARD = "#1e293b"        # 부드러운 다크 차콜
-    BG_CARD_LIGHT = "#334155"  # 슬레이트 그레이
-    BG_CARD_HOVER = "#475569"  # 호버 상태
+class S:
+    """슬레이트 & 인디고 테마 팔레트"""
+    BG        = "#0f172a"   # 딥 네이비
+    CARD      = "#1e293b"   # 카드 배경
+    CARD2     = "#334155"   # 밝은 카드
+    CARD3     = "#475569"   # 호버
+    CYAN      = "#38bdf8"   # 포인트 사이언
+    INDIGO    = "#818cf8"   # 인디고
+    EMERALD   = "#10b981"   # 에메랄드
+    ROSE      = "#f43f5e"   # 로즈
+    WHITE     = "#f8fafc"   # 메인 텍스트
+    GRAY      = "#94a3b8"   # 보조 텍스트
+    DIM       = "#64748b"   # 흐린 텍스트
+    BORDER    = "#334155"
 
-    ACCENT_CYAN = "#38bdf8"    # 일렉트릭 사이언
-    ACCENT_INDIGO = "#818cf8"  # 인디고 바이올렛
-    ACCENT_EMERALD = "#10b981" # 에메랄드 그린
-    ACCENT_ROSE = "#f43f5e"    # 로즈 레드
 
-    TEXT_MAIN = "#f8fafc"      # 퓨어 화이트
-    TEXT_MUTED = "#94a3b8"     # 쿨 그레이
-    TEXT_SUBTLE = "#64748b"    # 보조 텍스트
-
-    BORDER = "#334155"
+# ─── 폰트 단축 헬퍼 (float 절대 사용 금지) ─────────────────────────
+def F(size: int, bold=False, family="Malgun Gothic"):
+    weight = "bold" if bold else "normal"
+    return (family, size, weight)
 
 
 class OTPAuthDialog(tk.Toplevel):
-    """동반자 OTP 번호(6자리) 입력을 요구하는 모달 창입니다."""
+    """동반자 OTP 인증 다이얼로그"""
 
     def __init__(self, parent, secret: str, on_success: Callable[[], None]):
         super().__init__(parent)
@@ -53,87 +61,62 @@ class OTPAuthDialog(tk.Toplevel):
         self.title(t("otp_auth_title"))
         self.geometry("440x300")
         self.resizable(False, False)
-        self.configure(bg=SlateTheme.BG_DARK)
-        self.transient(parent)
-        self.grab_set()
+        self.configure(bg=S.BG)
+        self.lift()
+        self.focus_force()
+        self._build()
+        self._center()
 
-        self._build_ui()
-        self.center_window()
-
-    def center_window(self):
+    def _center(self):
         self.update_idletasks()
-        w = self.winfo_width()
-        h = self.winfo_height()
-        x = (self.winfo_screenwidth() // 2) - (w // 2)
-        y = (self.winfo_screenheight() // 2) - (h // 2)
+        w, h = self.winfo_width(), self.winfo_height()
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
 
-    def _build_ui(self):
-        pad = tk.Frame(self, bg=SlateTheme.BG_DARK, padx=26, pady=22)
+    def _build(self):
+        pad = tk.Frame(self, bg=S.BG, padx=26, pady=22)
         pad.pack(fill=tk.BOTH, expand=True)
 
-        lbl_title = tk.Label(
-            pad, text=t("otp_auth_title"), font=("Malgun Gothic", 14, "bold"),
-            bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MAIN
-        )
-        lbl_title.pack(pady=(0, 6))
+        tk.Label(pad, text=t("otp_auth_title"), font=F(14, bold=True),
+                 bg=S.BG, fg=S.WHITE).pack(pady=(0, 6))
+        tk.Label(pad, text=t("otp_auth_desc"), font=F(10),
+                 bg=S.BG, fg=S.GRAY, justify=tk.CENTER).pack(pady=6)
 
-        lbl_desc = tk.Label(
-            pad, text=t("otp_auth_desc"), font=("Malgun Gothic", 10),
-            bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MUTED, justify=tk.CENTER
-        )
-        lbl_desc.pack(pady=6)
+        self.entry = tk.Entry(pad, font=("Consolas", 20, "bold"), justify=tk.CENTER,
+                              bg=S.CARD2, fg=S.WHITE, insertbackground=S.WHITE,
+                              bd=0, highlightthickness=1,
+                              highlightcolor=S.CYAN, highlightbackground=S.BORDER)
+        self.entry.pack(ipady=6, fill=tk.X, pady=8)
+        self.entry.focus_set()
+        self.entry.bind("<Return>", lambda e: self._verify())
 
-        self.entry_otp = tk.Entry(
-            pad, font=("Consolas", 20, "bold"), justify=tk.CENTER,
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN,
-            insertbackground=SlateTheme.TEXT_MAIN, bd=0, highlightthickness=1,
-            highlightcolor=SlateTheme.ACCENT_CYAN, highlightbackground=SlateTheme.BORDER
-        )
-        self.entry_otp.pack(ipady=6, fill=tk.X, pady=8)
-        self.entry_otp.focus_set()
-        self.entry_otp.bind("<Return>", lambda e: self.verify())
+        self.lbl_err = tk.Label(pad, text="", font=F(9, bold=True),
+                                bg=S.BG, fg=S.ROSE)
+        self.lbl_err.pack(pady=(0, 6))
 
-        self.lbl_error = tk.Label(
-            pad, text="", font=("Malgun Gothic", 9, "bold"), bg=SlateTheme.BG_DARK, fg=SlateTheme.ACCENT_ROSE
-        )
-        self.lbl_error.pack(pady=(0, 6))
+        row = tk.Frame(pad, bg=S.BG)
+        row.pack(fill=tk.X)
+        tk.Button(row, text=t("otp_auth_btn"), font=F(11, bold=True),
+                  bg=S.CYAN, fg=S.BG, activebackground="#0284c7",
+                  bd=0, pady=7, cursor="hand2",
+                  command=self._verify).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
+        tk.Button(row, text=t("otp_cancel_btn"), font=F(11),
+                  bg=S.CARD2, fg=S.GRAY, bd=0, pady=7,
+                  cursor="hand2", command=self.destroy).pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(5, 0))
 
-        btn_frame = tk.Frame(pad, bg=SlateTheme.BG_DARK)
-        btn_frame.pack(fill=tk.X)
-
-        btn_submit = tk.Button(
-            btn_frame, text=t("otp_auth_btn"), font=("Malgun Gothic", 11, "bold"),
-            bg=SlateTheme.ACCENT_CYAN, fg=SlateTheme.BG_DARK, activebackground="#0284c7",
-            activeforeground="white", bd=0, relief=tk.FLAT, pady=7, cursor="hand2",
-            command=self.verify
-        )
-        btn_submit.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0, 5))
-
-        btn_cancel = tk.Button(
-            btn_frame, text=t("otp_cancel_btn"), font=("Malgun Gothic", 11),
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MUTED, bd=0, relief=tk.FLAT,
-            pady=7, cursor="hand2", command=self.destroy
-        )
-        btn_cancel.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(5, 0))
-
-    def verify(self):
-        code = self.entry_otp.get().strip()
-        if code == "1234":
-            self.destroy()
-            self.on_success()
-            return
-
-        if self.secret and verify_totp(self.secret, code):
+    def _verify(self):
+        code = self.entry.get().strip()
+        if code == "1234" or (self.secret and verify_totp(self.secret, code)):
             self.destroy()
             self.on_success()
         else:
-            self.lbl_error.config(text=t("otp_err_mismatch"))
-            self.entry_otp.delete(0, tk.END)
+            self.lbl_err.config(text=t("otp_err_mismatch"))
+            self.entry.delete(0, tk.END)
 
 
 class OTPSetupDialog(tk.Toplevel):
-    """동반자 스마트폰 등록 대화상자"""
+    """동반자 스마트폰 OTP 등록 다이얼로그"""
 
     def __init__(self, parent, current_secret: str, on_complete: Callable[[str], None]):
         super().__init__(parent)
@@ -142,129 +125,100 @@ class OTPSetupDialog(tk.Toplevel):
         self.title(t("otp_setup_title"))
         self.geometry("480x600")
         self.resizable(False, False)
-        self.configure(bg=SlateTheme.BG_DARK)
-        self.transient(parent)
-        self.grab_set()
+        self.configure(bg=S.BG)
+        self.lift()
+        self.focus_force()
+        self._build()
+        self._center()
 
-        self._build_ui()
-        self.center_window()
-
-    def center_window(self):
+    def _center(self):
         self.update_idletasks()
-        w = self.winfo_width()
-        h = self.winfo_height()
-        x = (self.winfo_screenwidth() // 2) - (w // 2)
-        y = (self.winfo_screenheight() // 2) - (h // 2)
+        w, h = self.winfo_width(), self.winfo_height()
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
 
-    def _build_ui(self):
-        pad = tk.Frame(self, bg=SlateTheme.BG_DARK, padx=24, pady=20)
+    def _build(self):
+        pad = tk.Frame(self, bg=S.BG, padx=24, pady=20)
         pad.pack(fill=tk.BOTH, expand=True)
 
-        lbl_title = tk.Label(
-            pad, text=t("otp_setup_head"), font=("Malgun Gothic", 14, "bold"),
-            bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MAIN
-        )
-        lbl_title.pack(anchor="w")
+        tk.Label(pad, text=t("otp_setup_head"), font=F(14, bold=True),
+                 bg=S.BG, fg=S.WHITE).pack(anchor="w")
+        tk.Label(pad, text=t("otp_setup_sub"), font=F(10),
+                 bg=S.BG, fg=S.GRAY, justify=tk.LEFT).pack(anchor="w", pady=(4, 12))
 
-        lbl_sub = tk.Label(
-            pad, text=t("otp_setup_sub"), font=("Malgun Gothic", 10),
-            bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MUTED, justify=tk.LEFT
-        )
-        lbl_sub.pack(anchor="w", pady=(4, 12))
-
-        qr_frame = tk.Frame(pad, bg=SlateTheme.BG_CARD, bd=1, relief=tk.FLAT, padx=10, pady=10)
+        # QR 코드 영역
+        qr_frame = tk.Frame(pad, bg=S.CARD, padx=10, pady=10)
         qr_frame.pack(pady=4)
-
         if HAS_QR:
-            uri = get_otpauth_uri(self.secret)
-            qr = qrcode.QRCode(box_size=4, border=2)
-            qr.add_data(uri)
-            qr.make(fit=True)
-            img = qr.make_image(fill_color="black", back_color="white")
-            self.tk_img = ImageTk.PhotoImage(img)
-            qr_label = tk.Label(qr_frame, image=self.tk_img, bg="white")
-            qr_label.pack()
+            try:
+                uri = get_otpauth_uri(self.secret)
+                qr = qrcode.QRCode(box_size=4, border=2)
+                qr.add_data(uri)
+                qr.make(fit=True)
+                img = qr.make_image(fill_color="black", back_color="white")
+                self.tk_img = ImageTk.PhotoImage(img)
+                tk.Label(qr_frame, image=self.tk_img, bg="white").pack()
+            except Exception:
+                tk.Label(qr_frame, text="QR 생성 오류 - 키를 직접 입력하세요",
+                         bg=S.CARD, fg=S.GRAY, font=F(10), pady=20).pack()
         else:
-            lbl_no_qr = tk.Label(
-                qr_frame, text="[QR Module Error] Secret Key Only",
-                bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MUTED, font=("Malgun Gothic", 10), pady=30, padx=20
-            )
-            lbl_no_qr.pack()
+            tk.Label(qr_frame, text="qrcode 모듈 없음 - 키를 직접 입력하세요",
+                     bg=S.CARD, fg=S.GRAY, font=F(10), pady=20).pack()
 
-        key_box = tk.Frame(pad, bg=SlateTheme.BG_CARD_LIGHT, padx=12, pady=8)
+        # 시크릿 키 표시
+        key_box = tk.Frame(pad, bg=S.CARD2, padx=12, pady=8)
         key_box.pack(fill=tk.X, pady=12)
-
-        lbl_key_title = tk.Label(key_box, text=t("otp_key_title"), font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MUTED)
-        lbl_key_title.pack(anchor="w")
-
-        key_row = tk.Frame(key_box, bg=SlateTheme.BG_CARD_LIGHT)
+        tk.Label(key_box, text=t("otp_key_title"), font=F(9),
+                 bg=S.CARD2, fg=S.GRAY).pack(anchor="w")
+        key_row = tk.Frame(key_box, bg=S.CARD2)
         key_row.pack(fill=tk.X, pady=2)
+        tk.Label(key_row, text=self.secret, font=("Consolas", 14, "bold"),
+                 bg=S.CARD2, fg=S.CYAN).pack(side=tk.LEFT)
+        tk.Button(key_row, text=t("otp_copy_btn"), font=F(9, bold=True),
+                  bg=S.CARD, fg=S.WHITE, bd=0, padx=10, pady=3,
+                  cursor="hand2", command=self._copy_key).pack(side=tk.RIGHT)
 
-        self.lbl_secret = tk.Label(
-            key_row, text=self.secret, font=("Consolas", 14, "bold"),
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.ACCENT_CYAN
-        )
-        self.lbl_secret.pack(side=tk.LEFT)
-
-        btn_copy = tk.Button(
-            key_row, text=t("otp_copy_btn"), font=("Malgun Gothic", 9, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN, bd=0, padx=10, pady=3,
-            cursor="hand2", command=self.copy_key
-        )
-        btn_copy.pack(side=tk.RIGHT)
-
-        lbl_test = tk.Label(
-            pad, text=t("otp_test_label"),
-            font=("Malgun Gothic", 10), bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MAIN
-        )
-        lbl_test.pack(anchor="w", pady=(6, 2))
-
-        test_row = tk.Frame(pad, bg=SlateTheme.BG_DARK)
+        # 인증 테스트
+        tk.Label(pad, text=t("otp_test_label"), font=F(10),
+                 bg=S.BG, fg=S.WHITE).pack(anchor="w", pady=(6, 2))
+        test_row = tk.Frame(pad, bg=S.BG)
         test_row.pack(fill=tk.X, pady=2)
-
-        self.entry_test = tk.Entry(
-            test_row, font=("Consolas", 14, "bold"), justify=tk.CENTER,
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN,
-            insertbackground=SlateTheme.TEXT_MAIN, bd=0, highlightthickness=1,
-            highlightcolor=SlateTheme.ACCENT_CYAN, highlightbackground=SlateTheme.BORDER, width=10
-        )
+        self.entry_test = tk.Entry(test_row, font=("Consolas", 14, "bold"), justify=tk.CENTER,
+                                   bg=S.CARD2, fg=S.WHITE, insertbackground=S.WHITE,
+                                   bd=0, highlightthickness=1,
+                                   highlightcolor=S.CYAN, highlightbackground=S.BORDER, width=10)
         self.entry_test.pack(side=tk.LEFT, ipady=4)
+        tk.Button(test_row, text=t("otp_test_btn"), font=F(10, bold=True),
+                  bg=S.CYAN, fg=S.BG, bd=0, padx=14, pady=5,
+                  cursor="hand2", command=self._test_and_save).pack(side=tk.LEFT, padx=8)
 
-        btn_test = tk.Button(
-            test_row, text=t("otp_test_btn"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.ACCENT_CYAN, fg=SlateTheme.BG_DARK, bd=0, padx=14, pady=5,
-            cursor="hand2", command=self.test_and_save
-        )
-        btn_test.pack(side=tk.LEFT, padx=8)
-
-        self.lbl_msg = tk.Label(pad, text="", font=("Malgun Gothic", 10, "bold"), bg=SlateTheme.BG_DARK)
+        self.lbl_msg = tk.Label(pad, text="", font=F(10, bold=True), bg=S.BG)
         self.lbl_msg.pack(pady=4)
 
-    def copy_key(self):
+    def _copy_key(self):
         self.clipboard_clear()
         self.clipboard_append(self.secret)
         messagebox.showinfo(t("copied_title"), t("copied_msg"), parent=self)
 
-    def test_and_save(self):
+    def _test_and_save(self):
         code = self.entry_test.get().strip()
         if not code:
-            self.lbl_msg.config(text=t("otp_test_empty"), fg=SlateTheme.ACCENT_ROSE)
+            self.lbl_msg.config(text=t("otp_test_empty"), fg=S.ROSE)
             return
-
         if code == "1234" or verify_totp(self.secret, code):
             messagebox.showinfo(t("save_success_title"), t("otp_test_success"), parent=self)
             self.destroy()
             self.on_complete(self.secret)
         else:
-            self.lbl_msg.config(text=t("otp_err_mismatch"), fg=SlateTheme.ACCENT_ROSE)
+            self.lbl_msg.config(text=t("otp_err_mismatch"), fg=S.ROSE)
 
 
 class SettingsWindow(tk.Toplevel):
-    """DBjara 2.0 스마트 대시보드 및 복합 룰 설정 창
+    """DBjara 2.0 대시보드 & 설정 창
     
-    반드시 tk.Tk() 루트가 이미 존재하는 상태에서 생성해야 합니다.
-    (tk.Tk는 프로세스 내 하나만 존재할 수 있으므로 Toplevel을 사용합니다)
+    반드시 tk.Tk() 루트가 존재하는 메인 스레드에서 생성해야 합니다.
+    (tk.Tk는 프로세스당 하나만 허용되므로 Toplevel을 사용합니다)
     """
 
     TIME_OPTIONS = [
@@ -278,512 +232,428 @@ class SettingsWindow(tk.Toplevel):
         ("240분 (4시간)", 240),
     ]
 
-    NIGHT_START_OPTIONS = ["22:00", "22:30", "23:00", "23:30", "00:00"]
-    NIGHT_END_OPTIONS = ["05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00"]
+    NIGHT_START = ["22:00", "22:30", "23:00", "23:30", "00:00"]
+    NIGHT_END   = ["05:00", "05:30", "06:00", "06:30", "07:00",
+                   "07:30", "08:00", "08:30", "09:00"]
 
     def __init__(self, parent: tk.Tk, on_config_updated: Optional[Callable[[dict], None]] = None):
-        # tk.Toplevel은 반드시 부모 Tk 루트를 넣어야 합니다
         super().__init__(parent)
         self.on_config_updated = on_config_updated
-        self.config = load_config()
+        self.config_data = load_config()
 
         self.title(t("app_title"))
-        self.geometry("640x890")
-        self.resizable(False, False)
-        self.configure(bg=SlateTheme.BG_DARK)
-
-        # 독립 창처럼 동작하도록 설정 (부모 뒤에 숨지 않게)
+        self.geometry("640x920")
+        self.resizable(False, True)
+        self.configure(bg=S.BG)
         self.lift()
         self.focus_force()
 
-        self._init_variables()
-        self.main_container = None
+        self._init_vars()
+        self._container = None
         self._build_ui()
-        self.center_window()
+        self._center()
 
-    def center_window(self):
+    def _center(self):
         self.update_idletasks()
-        w = self.winfo_width()
-        h = self.winfo_height()
-        x = (self.winfo_screenwidth() // 2) - (w // 2)
-        y = (self.winfo_screenheight() // 2) - (h // 2)
+        w, h = self.winfo_width(), self.winfo_height()
+        x = (self.winfo_screenwidth() - w) // 2
+        y = (self.winfo_screenheight() - h) // 2
         self.geometry(f"{w}x{h}+{x}+{y}")
 
-    def _init_variables(self):
-        self.var_lang = tk.StringVar(value=self.config.get("language", "ko"))
-        self.var_commitment = tk.StringVar(value=self.config.get("commitment_plan", "none"))
-        
-        self.var_solo_rule = tk.StringVar(value=self.config.get("solo_rule", "block_always"))
-        self.var_solo_limit = tk.IntVar(value=self.config.get("solo_limit_minutes", 60))
-        
-        self.var_party_rule = tk.StringVar(value=self.config.get("party_rule", "time_limit"))
-        self.var_party_limit = tk.IntVar(value=self.config.get("party_limit_minutes", 120))
-        
-        self.var_night_lock = tk.BooleanVar(value=self.config.get("night_lock", True))
-        
-        n_start = self.config.get("night_start", "23:00")
+    def _init_vars(self):
+        cfg = self.config_data
+        self.var_lang         = tk.StringVar(value=cfg.get("language", "ko"))
+        self.var_plan         = tk.StringVar(value=cfg.get("commitment_plan", "none"))
+        self.var_solo_rule    = tk.StringVar(value=cfg.get("solo_rule", "block_always"))
+        self.var_solo_min     = tk.IntVar(value=cfg.get("solo_limit_minutes", 60))
+        self.var_party_rule   = tk.StringVar(value=cfg.get("party_rule", "time_limit"))
+        self.var_party_min    = tk.IntVar(value=cfg.get("party_limit_minutes", 120))
+        self.var_night_lock   = tk.BooleanVar(value=cfg.get("night_lock", True))
+        n_start = cfg.get("night_start", "23:00")
         if n_start == "24:00":
             n_start = "00:00"
-        self.var_night_start = tk.StringVar(value=n_start)
-        self.var_night_end = tk.StringVar(value=self.config.get("night_end", "07:00"))
-        
-        self.var_otp_enabled = tk.BooleanVar(value=self.config.get("otp_enabled", False))
-        self.var_auto_start = tk.BooleanVar(value=self.config.get("auto_start", False))
-        
-        self.var_riot_id = tk.StringVar(value=self.config.get("riot_id", ""))
-        self.var_telemetry = tk.BooleanVar(value=self.config.get("telemetry_enabled", True))
-        self.var_auto_update = tk.BooleanVar(value=self.config.get("auto_update_check", True))
-        self.otp_secret = self.config.get("otp_secret", "")
+        self.var_night_start  = tk.StringVar(value=n_start)
+        self.var_night_end    = tk.StringVar(value=cfg.get("night_end", "07:00"))
+        self.var_otp          = tk.BooleanVar(value=cfg.get("otp_enabled", False))
+        self.var_autostart    = tk.BooleanVar(value=cfg.get("auto_start", False))
+        self.var_riot_id      = tk.StringVar(value=cfg.get("riot_id", ""))
+        self.var_telemetry    = tk.BooleanVar(value=cfg.get("telemetry_enabled", True))
+        self.var_autoupdate   = tk.BooleanVar(value=cfg.get("auto_update_check", True))
+        self.otp_secret       = cfg.get("otp_secret", "")
+
+    # ─────────────────────────────── UI 빌드 ─────────────────────────────────
 
     def _build_ui(self):
-        if self.main_container:
-            self.main_container.destroy()
+        """전체 UI를 처음부터 다시 그립니다."""
+        if self._container:
+            try:
+                self._container.destroy()
+            except Exception:
+                pass
 
         self.title(t("app_title"))
-        self.main_container = tk.Frame(self, bg=SlateTheme.BG_DARK, padx=22, pady=16)
-        self.main_container.pack(fill=tk.BOTH, expand=True)
 
-        # 1. 상단 타이틀 바 & 언어 / 업데이트
-        head = tk.Frame(self.main_container, bg=SlateTheme.BG_DARK)
-        head.pack(fill=tk.X, pady=(0, 8))
+        # 스크롤 가능한 캔버스 래퍼
+        canvas = tk.Canvas(self, bg=S.BG, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        title_row = tk.Frame(head, bg=SlateTheme.BG_DARK)
-        title_row.pack(fill=tk.X)
+        self._container = tk.Frame(canvas, bg=S.BG, padx=20, pady=14)
+        canvas_window = canvas.create_window((0, 0), window=self._container, anchor="nw")
 
-        title = tk.Label(
-            title_row, text=t("app_name"), font=("Malgun Gothic", 17, "bold"),
-            bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MAIN
+        def _on_frame_configure(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        def _on_canvas_configure(e):
+            canvas.itemconfig(canvas_window, width=e.width)
+
+        self._container.bind("<Configure>", _on_frame_configure)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        # 마우스 휠 스크롤
+        def _on_mousewheel(e):
+            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+        try:
+            self._build_header()
+            self._build_banner()
+            self._build_commitment()
+            self._build_solo()
+            self._build_party()
+            self._build_night()
+            self._build_security()
+            self._build_meta()
+            self._build_save_btn()
+        except Exception as e:
+            import traceback
+            print(f"[DBjara][GUI ERROR] _build_ui 오류: {e}")
+            traceback.print_exc()
+            tk.Label(self._container, text=f"UI 렌더링 오류:\n{e}",
+                     bg=S.BG, fg=S.ROSE, font=F(10), justify=tk.LEFT).pack(pady=20)
+
+    def _card(self, text, color):
+        """섹션 LabelFrame 생성 헬퍼"""
+        return tk.LabelFrame(
+            self._container, text=text, font=F(10, bold=True),
+            bg=S.CARD, fg=color, bd=1, relief=tk.SOLID, padx=12, pady=6
         )
-        title.pack(side=tk.LEFT)
 
-        lbl_ver = tk.Label(
-            title_row, text=f"{CURRENT_VERSION}", font=("Consolas", 10, "bold"),
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.ACCENT_CYAN, padx=8, pady=2
-        )
-        lbl_ver.pack(side=tk.LEFT, padx=10)
+    def _build_header(self):
+        """상단 타이틀 바"""
+        head = tk.Frame(self._container, bg=S.BG)
+        head.pack(fill=tk.X, pady=(0, 6))
 
-        lang_frame = tk.Frame(title_row, bg=SlateTheme.BG_DARK)
-        lang_frame.pack(side=tk.RIGHT)
+        row1 = tk.Frame(head, bg=S.BG)
+        row1.pack(fill=tk.X)
 
-        lbl_l = tk.Label(lang_frame, text="🌐", font=("Segoe UI Emoji", 11), bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MUTED)
-        lbl_l.pack(side=tk.LEFT, padx=(0, 4))
+        tk.Label(row1, text=t("app_name"), font=F(17, bold=True),
+                 bg=S.BG, fg=S.WHITE).pack(side=tk.LEFT)
+        tk.Label(row1, text=CURRENT_VERSION, font=("Consolas", 10, "bold"),
+                 bg=S.CARD2, fg=S.CYAN, padx=8, pady=2).pack(side=tk.LEFT, padx=8)
 
-        cb_lang = ttk.Combobox(
-            lang_frame, textvariable=self.var_lang, values=["ko", "en"],
-            state="readonly", width=6, font=("Malgun Gothic", 10)
-        )
-        cb_lang.pack(side=tk.LEFT)
-        cb_lang.bind("<<ComboboxSelected>>", self._on_language_changed)
+        # 우측: 언어 선택 + 업데이트 버튼
+        right = tk.Frame(row1, bg=S.BG)
+        right.pack(side=tk.RIGHT)
+        tk.Button(right, text=t("btn_update_check"), font=F(9, bold=True),
+                  bg=S.CARD2, fg=S.WHITE, bd=0, padx=8, pady=3,
+                  cursor="hand2", command=self._check_update).pack(side=tk.RIGHT, padx=(6, 0))
+        cb_lang = ttk.Combobox(right, textvariable=self.var_lang, values=["ko", "en"],
+                               state="readonly", width=5, font=F(10))
+        cb_lang.pack(side=tk.RIGHT)
+        cb_lang.bind("<<ComboboxSelected>>", self._on_lang_change)
+        tk.Label(right, text="🌐", font=("Segoe UI Emoji", 11),
+                 bg=S.BG, fg=S.GRAY).pack(side=tk.RIGHT, padx=(0, 3))
 
-        btn_update = tk.Button(
-            title_row, text=t("btn_update_check"), font=("Malgun Gothic", 9, "bold"),
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN, bd=0, padx=8, pady=3,
-            cursor="hand2", command=self.check_update_manual
-        )
-        btn_update.pack(side=tk.RIGHT, padx=8)
+        tk.Label(head, text=t("app_sub"), font=F(9),
+                 bg=S.BG, fg=S.GRAY).pack(anchor="w", pady=(2, 0))
 
-        sub = tk.Label(
-            head, text=t("app_sub"), font=("Malgun Gothic", 9),
-            bg=SlateTheme.BG_DARK, fg=SlateTheme.TEXT_MUTED
-        )
-        sub.pack(anchor="w", pady=(2, 0))
+    def _build_banner(self):
+        """D-Day 상태 배너"""
+        try:
+            is_locked = is_commitment_locked(self.config_data)
+            rem_days  = get_remaining_days(self.config_data)
+            end_date  = self.config_data.get("commitment_end_date", "")
+        except Exception:
+            is_locked, rem_days, end_date = False, 0, ""
 
-        # 2. 상단 D-Day 대시보드 상태 배너 카드
-        self._build_dashboard_banner()
-
-        # 3. 섹션 0: 목표 약정 기간 (Commitment Plan)
-        card_commit = tk.LabelFrame(
-            self.main_container, text=t("sec_commitment"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.ACCENT_INDIGO, bd=1, relief=tk.SOLID, padx=14, pady=6
-        )
-        card_commit.pack(fill=tk.X, pady=(0, 8))
-
-        plan_frame = tk.Frame(card_commit, bg=SlateTheme.BG_CARD)
-        plan_frame.pack(fill=tk.X, pady=1)
-
-        plans = [
-            ("plan_none", "none"),
-            ("plan_1day", "1day"),
-            ("plan_7days", "7days"),
-            ("plan_30days", "30days"),
-        ]
-        for key, val in plans:
-            rb = tk.Radiobutton(
-                plan_frame, text=t(key), variable=self.var_commitment, value=val,
-                font=("Malgun Gothic", 9, "bold" if val != "none" else "normal"),
-                bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-                selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-                activeforeground=SlateTheme.TEXT_MAIN
-            )
-            rb.pack(anchor="w", pady=1)
-
-        # 4. 섹션 1: 1인 솔로 플레이 제어
-        card_solo = tk.LabelFrame(
-            self.main_container, text=t("sec_solo"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.ACCENT_CYAN, bd=1, relief=tk.SOLID, padx=14, pady=6
-        )
-        card_solo.pack(fill=tk.X, pady=(0, 8))
-
-        r_s1 = tk.Radiobutton(
-            card_solo, text=t("solo_block_always"), variable=self.var_solo_rule, value="block_always",
-            font=("Malgun Gothic", 9, "bold"), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_solo_rule_change
-        )
-        r_s1.pack(anchor="w", pady=1)
-
-        row_s2 = tk.Frame(card_solo, bg=SlateTheme.BG_CARD)
-        row_s2.pack(fill=tk.X, pady=1)
-
-        r_s2 = tk.Radiobutton(
-            row_s2, text=t("solo_time_limit"), variable=self.var_solo_rule, value="time_limit",
-            font=("Malgun Gothic", 9, "bold"), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_solo_rule_change
-        )
-        r_s2.pack(side=tk.LEFT)
-
-        self.cb_solo_time = ttk.Combobox(
-            row_s2, values=[item[0] for item in self.TIME_OPTIONS], state="readonly", width=14, font=("Malgun Gothic", 9)
-        )
-        self._sync_combobox(self.cb_solo_time, self.var_solo_limit.get())
-        self.cb_solo_time.pack(side=tk.LEFT, padx=6)
-        self.cb_solo_time.bind("<<ComboboxSelected>>", lambda e: self._on_time_selected(self.cb_solo_time, self.var_solo_limit))
-
-        r_s3 = tk.Radiobutton(
-            card_solo, text=t("solo_unlimited"), variable=self.var_solo_rule, value="unlimited",
-            font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MUTED,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_solo_rule_change
-        )
-        r_s3.pack(anchor="w", pady=1)
-        self._on_solo_rule_change()
-
-        # 5. 섹션 2: 2인 이상 다인큐(파티) 제어
-        card_party = tk.LabelFrame(
-            self.main_container, text=t("sec_party"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.ACCENT_EMERALD, bd=1, relief=tk.SOLID, padx=14, pady=6
-        )
-        card_party.pack(fill=tk.X, pady=(0, 8))
-
-        r_p1 = tk.Radiobutton(
-            card_party, text=t("party_unlimited"), variable=self.var_party_rule, value="unlimited",
-            font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_party_rule_change
-        )
-        r_p1.pack(anchor="w", pady=1)
-
-        row_p2 = tk.Frame(card_party, bg=SlateTheme.BG_CARD)
-        row_p2.pack(fill=tk.X, pady=1)
-
-        r_p2 = tk.Radiobutton(
-            row_p2, text=t("party_time_limit"), variable=self.var_party_rule, value="time_limit",
-            font=("Malgun Gothic", 9, "bold"), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_party_rule_change
-        )
-        r_p2.pack(side=tk.LEFT)
-
-        self.cb_party_time = ttk.Combobox(
-            row_p2, values=[item[0] for item in self.TIME_OPTIONS], state="readonly", width=14, font=("Malgun Gothic", 9)
-        )
-        self._sync_combobox(self.cb_party_time, self.var_party_limit.get())
-        self.cb_party_time.pack(side=tk.LEFT, padx=6)
-        self.cb_party_time.bind("<<ComboboxSelected>>", lambda e: self._on_time_selected(self.cb_party_time, self.var_party_limit))
-
-        r_p3 = tk.Radiobutton(
-            card_party, text=t("party_block_always"), variable=self.var_party_rule, value="block_always",
-            font=("Malgun Gothic", 9, "bold"), bg=SlateTheme.BG_CARD, fg=SlateTheme.ACCENT_ROSE,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_party_rule_change
-        )
-        r_p3.pack(anchor="w", pady=1)
-        self._on_party_rule_change()
-
-        # 6. 섹션 3: 야간 취침 모드
-        card_night = tk.LabelFrame(
-            self.main_container, text=t("sec_night"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.ACCENT_ROSE, bd=1, relief=tk.SOLID, padx=14, pady=6
-        )
-        card_night.pack(fill=tk.X, pady=(0, 8))
-
-        chk_night = tk.Checkbutton(
-            card_night, text=t("night_lock_chk"), variable=self.var_night_lock,
-            font=("Malgun Gothic", 9, "bold"), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN
-        )
-        chk_night.pack(anchor="w")
-
-        time_row = tk.Frame(card_night, bg=SlateTheme.BG_CARD)
-        time_row.pack(fill=tk.X, pady=(3, 2), padx=14)
-
-        lbl_t1 = tk.Label(time_row, text=t("night_start"), font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MUTED)
-        lbl_t1.pack(side=tk.LEFT)
-
-        cb_n_start = ttk.Combobox(
-            time_row, textvariable=self.var_night_start, values=self.NIGHT_START_OPTIONS,
-            state="readonly", width=7, font=("Malgun Gothic", 9)
-        )
-        cb_n_start.pack(side=tk.LEFT, padx=6)
-
-        lbl_t2 = tk.Label(time_row, text=t("night_end"), font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MUTED)
-        lbl_t2.pack(side=tk.LEFT, padx=(10, 0))
-
-        cb_n_end = ttk.Combobox(
-            time_row, textvariable=self.var_night_end, values=self.NIGHT_END_OPTIONS,
-            state="readonly", width=7, font=("Malgun Gothic", 9)
-        )
-        cb_n_end.pack(side=tk.LEFT, padx=6)
-
-        # 7. 섹션 4: 자제력 자물쇠 & 보안
-        card_lock = tk.LabelFrame(
-            self.main_container, text=t("sec_lock"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=14, pady=6
-        )
-        card_lock.pack(fill=tk.X, pady=(0, 8))
-
-        chk_otp = tk.Checkbutton(
-            card_lock, text=t("otp_chk"), variable=self.var_otp_enabled,
-            font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN, command=self._on_otp_toggle
-        )
-        chk_otp.pack(anchor="w")
-
-        row_otp = tk.Frame(card_lock, bg=SlateTheme.BG_CARD)
-        row_otp.pack(fill=tk.X, padx=14, pady=(2, 2))
-
-        btn_otp_setup = tk.Button(
-            row_otp, text=t("otp_view_btn"), font=("Malgun Gothic", 8, "bold"),
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN, bd=0, padx=8, pady=3,
-            cursor="hand2", command=self.open_otp_setup
-        )
-        btn_otp_setup.pack(side=tk.LEFT)
-
-        chk_auto = tk.Checkbutton(
-            card_lock, text=t("auto_start_chk"), variable=self.var_auto_start,
-            font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN
-        )
-        chk_auto.pack(anchor="w")
-
-        # 8. 섹션 5: 부가 기능 및 전적/통계 수집 (로그 수집 복원)
-        card_meta = tk.LabelFrame(
-            self.main_container, text=t("sec_meta"), font=("Malgun Gothic", 10, "bold"),
-            bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=14, pady=6
-        )
-        card_meta.pack(fill=tk.X, pady=(0, 8))
-
-        row_riot = tk.Frame(card_meta, bg=SlateTheme.BG_CARD)
-        row_riot.pack(fill=tk.X, pady=1)
-
-        lbl_rid = tk.Label(row_riot, text=t("riot_desc"), font=("Malgun Gothic", 8.5), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MUTED)
-        lbl_rid.pack(side=tk.LEFT)
-
-        entry_rid = tk.Entry(
-            row_riot, textvariable=self.var_riot_id, width=20, font=("Malgun Gothic", 9),
-            bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN, bd=0, insertbackground=SlateTheme.TEXT_MAIN
-        )
-        entry_rid.pack(side=tk.LEFT, padx=6, ipady=2)
-
-        meta_checks = tk.Frame(card_meta, bg=SlateTheme.BG_CARD)
-        meta_checks.pack(fill=tk.X, pady=1)
-
-        chk_telem = tk.Checkbutton(
-            meta_checks, text=t("telemetry_chk"), variable=self.var_telemetry,
-            font=("Malgun Gothic", 8.5), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN
-        )
-        chk_telem.pack(side=tk.LEFT, padx=(0, 10))
-
-        chk_au = tk.Checkbutton(
-            meta_checks, text=t("auto_update_chk"), variable=self.var_auto_update,
-            font=("Malgun Gothic", 8.5), bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN,
-            selectcolor=SlateTheme.BG_CARD_LIGHT, activebackground=SlateTheme.BG_CARD,
-            activeforeground=SlateTheme.TEXT_MAIN
-        )
-        chk_au.pack(side=tk.LEFT)
-
-        # 9. 플랜 저장 버튼 및 비상 자동실행 완전 삭제 버튼
-        btn_save = tk.Button(
-            self.main_container, text=t("btn_save"), font=("Malgun Gothic", 12, "bold"),
-            bg=SlateTheme.ACCENT_CYAN, fg=SlateTheme.BG_DARK, activebackground="#0284c7",
-            activeforeground="white", bd=0, relief=tk.FLAT, pady=8, cursor="hand2",
-            command=self.request_save
-        )
-        btn_save.pack(fill=tk.X, pady=(4, 0))
-
-    def _build_dashboard_banner(self):
-        """상단 D-Day 대시보드 배너 (2줄 구조)"""
-        is_locked = is_commitment_locked(self.config)
-        rem_days = get_remaining_days(self.config)
-        end_date = self.config.get("commitment_end_date", "")
-
-        banner = tk.Frame(
-            self.main_container, bg=SlateTheme.BG_CARD_LIGHT,
-            padx=14, pady=8, bd=1, relief=tk.SOLID
-        )
+        banner = tk.Frame(self._container, bg=S.CARD2, padx=12, pady=8,
+                          bd=1, relief=tk.SOLID)
         banner.pack(fill=tk.X, pady=(0, 8))
 
-        row1 = tk.Frame(banner, bg=SlateTheme.BG_CARD_LIGHT)
+        row1 = tk.Frame(banner, bg=S.CARD2)
         row1.pack(fill=tk.X)
 
         if is_locked:
-            d_text = t("dash_today") if rem_days == 0 else t("dash_d_day", days=rem_days)
-            badge_color = SlateTheme.ACCENT_ROSE if rem_days == 0 else SlateTheme.ACCENT_INDIGO
+            badge_txt   = f" D-{rem_days} " if rem_days > 0 else " D-Day "
+            badge_color = S.ROSE if rem_days == 0 else S.INDIGO
+            tk.Label(row1, text=f"🔒{badge_txt}", font=F(9, bold=True),
+                     bg=badge_color, fg="white", padx=4, pady=2).pack(side=tk.LEFT)
 
-            lbl_badge = tk.Label(
-                row1, text=f" 🔒 {d_text} ", font=("Malgun Gothic", 9.5, "bold"),
-                bg=badge_color, fg="white", padx=6, pady=1
-            )
-            lbl_badge.pack(side=tk.LEFT)
+            plan_key = self.config_data.get("commitment_plan", "none")
+            plan_str = t("plan_" + plan_key)
+            tk.Label(row1, text=f"  [{plan_str}] 진행 중", font=F(10, bold=True),
+                     bg=S.CARD2, fg=S.WHITE).pack(side=tk.LEFT)
 
-            plan_name = self.config.get("commitment_plan", "custom")
-            plan_str = t("plan_" + plan_name)
-            lbl_plan = tk.Label(
-                row1, text=f" [{plan_str}] 진행 중",
-                font=("Malgun Gothic", 10, "bold"), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MAIN
-            )
-            lbl_plan.pack(side=tk.LEFT, padx=6)
-
-            row2 = tk.Frame(banner, bg=SlateTheme.BG_CARD_LIGHT)
+            row2 = tk.Frame(banner, bg=S.CARD2)
             row2.pack(fill=tk.X, pady=(3, 0))
 
-            lbl_lock_info = tk.Label(
-                row2, text=t("dash_lock_until", date=end_date.split()[0]),
-                font=("Malgun Gothic", 8.5), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MUTED
-            )
-            lbl_lock_info.pack(anchor="w")
-
+            # end_date split 안전 처리
+            end_str = end_date.split()[0] if end_date and " " in end_date else end_date
+            tk.Label(row2, text=t("dash_lock_until", date=end_str), font=F(9),
+                     bg=S.CARD2, fg=S.GRAY).pack(anchor="w")
         else:
-            lbl_badge = tk.Label(
-                row1, text=f" 🔓 {t('dash_no_plan')} ", font=("Malgun Gothic", 9.5, "bold"),
-                bg=SlateTheme.BG_CARD_HOVER, fg=SlateTheme.TEXT_MUTED, padx=6, pady=1
-            )
-            lbl_badge.pack(side=tk.LEFT)
+            tk.Label(row1, text="🔓  자유 설정 모드", font=F(10, bold=True),
+                     bg=S.CARD2, fg=S.GRAY).pack(side=tk.LEFT)
+            tk.Label(row1, text="  목표 플랜을 설정하고 시작하세요", font=F(9),
+                     bg=S.CARD2, fg=S.DIM).pack(side=tk.LEFT)
 
-            lbl_status = tk.Label(
-                row1, text="자유 설정 모드 (목표 약정 플랜을 설정하고 시작하세요)",
-                font=("Malgun Gothic", 9), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.TEXT_MUTED
-            )
-            lbl_status.pack(side=tk.LEFT, padx=6)
+        # 오늘 플레이 시간
+        s_min = self.config_data.get("daily_solo_played_seconds", 0) // 60
+        p_min = self.config_data.get("daily_party_played_seconds", 0) // 60
+        row3 = tk.Frame(banner, bg=S.CARD2)
+        row3.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(row3, text=t("dash_today_usage", solo_used=f"{s_min}분", party_used=f"{p_min}분"),
+                 font=F(9, bold=True), bg=S.CARD2, fg=S.CYAN).pack(anchor="w")
 
-        s_sec = self.config.get("daily_solo_played_seconds", 0)
-        p_sec = self.config.get("daily_party_played_seconds", 0)
-        s_text = f"{s_sec // 60}분"
-        p_text = f"{p_sec // 60}분"
+    def _build_commitment(self):
+        """목표 약정 기간 섹션"""
+        card = self._card(t("sec_commitment"), S.INDIGO)
+        card.pack(fill=tk.X, pady=(0, 8))
 
-        row3 = tk.Frame(banner, bg=SlateTheme.BG_CARD_LIGHT)
-        row3.pack(fill=tk.X, pady=(2, 0))
+        plans = [("plan_none", "none"), ("plan_1day", "1day"),
+                 ("plan_7days", "7days"), ("plan_30days", "30days")]
+        for key, val in plans:
+            bold = val != "none"
+            tk.Radiobutton(card, text=t(key), variable=self.var_plan, value=val,
+                           font=F(9, bold=bold),
+                           bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                           activebackground=S.CARD, activeforeground=S.WHITE
+                           ).pack(anchor="w", pady=1)
 
-        lbl_usage = tk.Label(
-            row3, text=t("dash_today_usage", solo_used=s_text, party_used=p_text),
-            font=("Malgun Gothic", 8.5, "bold"), bg=SlateTheme.BG_CARD_LIGHT, fg=SlateTheme.ACCENT_CYAN
-        )
-        lbl_usage.pack(anchor="w")
+    def _build_solo(self):
+        """1인 솔로큐 제어 섹션"""
+        card = self._card(t("sec_solo"), S.CYAN)
+        card.pack(fill=tk.X, pady=(0, 8))
 
-    def _sync_combobox(self, cb: ttk.Combobox, target_minutes: int):
-        for disp, mins in self.TIME_OPTIONS:
-            if mins == target_minutes:
+        def rb(text, value, bold=False):
+            tk.Radiobutton(card, text=text, variable=self.var_solo_rule, value=value,
+                           font=F(9, bold=bold),
+                           bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                           activebackground=S.CARD, activeforeground=S.WHITE,
+                           command=self._refresh_solo_combo).pack(anchor="w", pady=1)
+
+        rb(t("solo_block_always"), "block_always", bold=True)
+
+        # 시간제한 행
+        row = tk.Frame(card, bg=S.CARD)
+        row.pack(fill=tk.X, pady=1)
+        tk.Radiobutton(row, text=t("solo_time_limit"), variable=self.var_solo_rule,
+                       value="time_limit", font=F(9, bold=True),
+                       bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE,
+                       command=self._refresh_solo_combo).pack(side=tk.LEFT)
+        self.cb_solo = ttk.Combobox(row, values=[o[0] for o in self.TIME_OPTIONS],
+                                    state="readonly", width=14, font=F(9))
+        self._set_combo(self.cb_solo, self.var_solo_min.get())
+        self.cb_solo.pack(side=tk.LEFT, padx=6)
+        self.cb_solo.bind("<<ComboboxSelected>>",
+                          lambda e: self._on_combo_select(self.cb_solo, self.var_solo_min))
+
+        rb(t("solo_unlimited"), "unlimited")
+        self._refresh_solo_combo()
+
+    def _build_party(self):
+        """파티큐 제어 섹션"""
+        card = self._card(t("sec_party"), S.EMERALD)
+        card.pack(fill=tk.X, pady=(0, 8))
+
+        tk.Radiobutton(card, text=t("party_unlimited"), variable=self.var_party_rule,
+                       value="unlimited", font=F(9),
+                       bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE,
+                       command=self._refresh_party_combo).pack(anchor="w", pady=1)
+
+        row = tk.Frame(card, bg=S.CARD)
+        row.pack(fill=tk.X, pady=1)
+        tk.Radiobutton(row, text=t("party_time_limit"), variable=self.var_party_rule,
+                       value="time_limit", font=F(9, bold=True),
+                       bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE,
+                       command=self._refresh_party_combo).pack(side=tk.LEFT)
+        self.cb_party = ttk.Combobox(row, values=[o[0] for o in self.TIME_OPTIONS],
+                                     state="readonly", width=14, font=F(9))
+        self._set_combo(self.cb_party, self.var_party_min.get())
+        self.cb_party.pack(side=tk.LEFT, padx=6)
+        self.cb_party.bind("<<ComboboxSelected>>",
+                           lambda e: self._on_combo_select(self.cb_party, self.var_party_min))
+
+        tk.Radiobutton(card, text=t("party_block_always"), variable=self.var_party_rule,
+                       value="block_always", font=F(9, bold=True),
+                       bg=S.CARD, fg=S.ROSE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE,
+                       command=self._refresh_party_combo).pack(anchor="w", pady=1)
+        self._refresh_party_combo()
+
+    def _build_night(self):
+        """야간 취침 모드 섹션"""
+        card = self._card(t("sec_night"), S.ROSE)
+        card.pack(fill=tk.X, pady=(0, 8))
+
+        tk.Checkbutton(card, text=t("night_lock_chk"), variable=self.var_night_lock,
+                       font=F(9, bold=True),
+                       bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE).pack(anchor="w")
+
+        row = tk.Frame(card, bg=S.CARD)
+        row.pack(fill=tk.X, pady=(3, 2), padx=12)
+        tk.Label(row, text=t("night_start"), font=F(9), bg=S.CARD, fg=S.GRAY).pack(side=tk.LEFT)
+        ttk.Combobox(row, textvariable=self.var_night_start, values=self.NIGHT_START,
+                     state="readonly", width=7, font=F(9)).pack(side=tk.LEFT, padx=6)
+        tk.Label(row, text=t("night_end"), font=F(9), bg=S.CARD, fg=S.GRAY).pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Combobox(row, textvariable=self.var_night_end, values=self.NIGHT_END,
+                     state="readonly", width=7, font=F(9)).pack(side=tk.LEFT, padx=6)
+
+    def _build_security(self):
+        """자물쇠 & 보안 섹션"""
+        card = self._card(t("sec_lock"), S.WHITE)
+        card.pack(fill=tk.X, pady=(0, 8))
+
+        tk.Checkbutton(card, text=t("otp_chk"), variable=self.var_otp,
+                       font=F(9), bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE,
+                       command=self._on_otp_toggle).pack(anchor="w")
+
+        btn_row = tk.Frame(card, bg=S.CARD)
+        btn_row.pack(fill=tk.X, padx=12, pady=(2, 2))
+        tk.Button(btn_row, text=t("otp_view_btn"), font=F(8, bold=True),
+                  bg=S.CARD2, fg=S.WHITE, bd=0, padx=8, pady=3,
+                  cursor="hand2", command=self._open_otp_setup).pack(side=tk.LEFT)
+
+        tk.Checkbutton(card, text=t("auto_start_chk"), variable=self.var_autostart,
+                       font=F(9), bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                       activebackground=S.CARD, activeforeground=S.WHITE).pack(anchor="w")
+
+    def _build_meta(self):
+        """부가 기능 / 전적 수집 섹션"""
+        card = self._card(t("sec_meta"), S.WHITE)
+        card.pack(fill=tk.X, pady=(0, 8))
+
+        row = tk.Frame(card, bg=S.CARD)
+        row.pack(fill=tk.X, pady=1)
+        tk.Label(row, text=t("riot_desc"), font=F(9), bg=S.CARD, fg=S.GRAY).pack(side=tk.LEFT)
+        tk.Entry(row, textvariable=self.var_riot_id, width=20, font=F(9),
+                 bg=S.CARD2, fg=S.WHITE, bd=0, insertbackground=S.WHITE
+                 ).pack(side=tk.LEFT, padx=6, ipady=2)
+
+        chk_row = tk.Frame(card, bg=S.CARD)
+        chk_row.pack(fill=tk.X, pady=1)
+        for text_key, var in [("telemetry_chk", self.var_telemetry),
+                               ("auto_update_chk", self.var_autoupdate)]:
+            tk.Checkbutton(chk_row, text=t(text_key), variable=var,
+                           font=F(9), bg=S.CARD, fg=S.WHITE, selectcolor=S.CARD2,
+                           activebackground=S.CARD, activeforeground=S.WHITE
+                           ).pack(side=tk.LEFT, padx=(0, 10))
+
+    def _build_save_btn(self):
+        """설정 저장 버튼"""
+        tk.Button(self._container, text=t("btn_save"), font=F(12, bold=True),
+                  bg=S.CYAN, fg=S.BG, activebackground="#0284c7",
+                  bd=0, pady=10, cursor="hand2",
+                  command=self._request_save).pack(fill=tk.X, pady=(4, 8))
+
+    # ─────────────────────────────── 이벤트 핸들러 ───────────────────────────
+
+    def _set_combo(self, cb: ttk.Combobox, minutes: int):
+        for disp, m in self.TIME_OPTIONS:
+            if m == minutes:
                 cb.set(disp)
                 return
         cb.set(self.TIME_OPTIONS[1][0])
 
-    def _on_time_selected(self, cb: ttk.Combobox, target_var: tk.IntVar):
+    def _on_combo_select(self, cb: ttk.Combobox, var: tk.IntVar):
         sel = cb.get()
-        for disp, mins in self.TIME_OPTIONS:
+        for disp, m in self.TIME_OPTIONS:
             if disp == sel:
-                target_var.set(mins)
+                var.set(m)
                 break
 
-    def _on_solo_rule_change(self):
-        if self.var_solo_rule.get() == "time_limit":
-            self.cb_solo_time.config(state="readonly")
-        else:
-            self.cb_solo_time.config(state="disabled")
+    def _refresh_solo_combo(self):
+        if hasattr(self, "cb_solo"):
+            s = "readonly" if self.var_solo_rule.get() == "time_limit" else "disabled"
+            self.cb_solo.config(state=s)
 
-    def _on_party_rule_change(self):
-        if self.var_party_rule.get() == "time_limit":
-            self.cb_party_time.config(state="readonly")
-        else:
-            self.cb_party_time.config(state="disabled")
+    def _refresh_party_combo(self):
+        if hasattr(self, "cb_party"):
+            s = "readonly" if self.var_party_rule.get() == "time_limit" else "disabled"
+            self.cb_party.config(state=s)
 
-    def _on_language_changed(self, event=None):
-        new_lang = self.var_lang.get()
-        set_language(new_lang)
+    def _on_lang_change(self, event=None):
+        set_language(self.var_lang.get())
         self._build_ui()
 
     def _on_otp_toggle(self):
-        if self.var_otp_enabled.get() and not self.otp_secret:
-            self.open_otp_setup()
+        if self.var_otp.get() and not self.otp_secret:
+            self._open_otp_setup()
 
-    def open_otp_setup(self):
-        OTPSetupDialog(self, self.otp_secret, on_complete=self._on_secret_configured)
+    def _open_otp_setup(self):
+        OTPSetupDialog(self, self.otp_secret,
+                       on_complete=lambda s: (setattr(self, "otp_secret", s), self.var_otp.set(True)))
 
-    def _on_secret_configured(self, new_secret: str):
-        self.otp_secret = new_secret
-        self.var_otp_enabled.set(True)
-
-    def check_update_manual(self):
-        def _check():
-            has_update, tag, body, url = get_latest_version_info()
+    def _check_update(self):
+        def _run():
+            has_update, tag, _, url = get_latest_version_info()
             if has_update:
-                if messagebox.askyesno(
-                    t("update_found_title"),
-                    t("update_found_msg", tag=tag),
-                    parent=self
-                ):
+                if messagebox.askyesno(t("update_found_title"),
+                                       t("update_found_msg", tag=tag), parent=self):
                     open_release_page(url)
             else:
-                messagebox.showinfo(t("update_latest_title"), t("update_latest_msg", version=CURRENT_VERSION), parent=self)
-        threading.Thread(target=_check, daemon=True).start()
+                messagebox.showinfo(t("update_latest_title"),
+                                    t("update_latest_msg", version=CURRENT_VERSION), parent=self)
+        threading.Thread(target=_run, daemon=True).start()
 
-    def request_save(self):
-        is_locked = is_commitment_locked(self.config)
-        has_otp = self.config.get("otp_enabled", False) and self.config.get("otp_secret")
-
+    def _request_save(self):
+        is_locked = is_commitment_locked(self.config_data)
+        has_otp   = self.config_data.get("otp_enabled", False) and self.config_data.get("otp_secret")
         if is_locked or has_otp:
-            OTPAuthDialog(self, self.config.get("otp_secret", ""), on_success=self._do_save)
+            OTPAuthDialog(self, self.config_data.get("otp_secret", ""), on_success=self._do_save)
         else:
             self._do_save()
 
     def _do_save(self):
-        plan = self.var_commitment.get()
+        plan     = self.var_plan.get()
         end_date = calculate_commitment_end_date(plan)
 
-        new_config = {
-            "language": self.var_lang.get(),
-            "commitment_plan": plan,
-            "commitment_end_date": end_date,
-            "solo_rule": self.var_solo_rule.get(),
-            "solo_limit_minutes": int(self.var_solo_limit.get()),
-            "party_rule": self.var_party_rule.get(),
-            "party_limit_minutes": int(self.var_party_limit.get()),
-            "night_lock": self.var_night_lock.get(),
-            "night_start": self.var_night_start.get(),
-            "night_end": self.var_night_end.get(),
-            "otp_enabled": self.var_otp_enabled.get(),
-            "otp_secret": self.otp_secret,
-            "auto_start": self.var_auto_start.get(),
-            "riot_id": self.var_riot_id.get().strip(),
-            "telemetry_enabled": self.var_telemetry.get(),
-            "auto_update_check": self.var_auto_update.get(),
-            "telemetry_uuid": self.config.get("telemetry_uuid", ""),
-            "daily_played_date": self.config.get("daily_played_date"),
-            "daily_solo_played_seconds": self.config.get("daily_solo_played_seconds", 0),
-            "daily_party_played_seconds": self.config.get("daily_party_played_seconds", 0),
+        new_cfg = {
+            "language":                self.var_lang.get(),
+            "commitment_plan":         plan,
+            "commitment_end_date":     end_date,
+            "solo_rule":               self.var_solo_rule.get(),
+            "solo_limit_minutes":      self.var_solo_min.get(),
+            "party_rule":              self.var_party_rule.get(),
+            "party_limit_minutes":     self.var_party_min.get(),
+            "night_lock":              self.var_night_lock.get(),
+            "night_start":             self.var_night_start.get(),
+            "night_end":               self.var_night_end.get(),
+            "otp_enabled":             self.var_otp.get(),
+            "otp_secret":              self.otp_secret,
+            "auto_start":              self.var_autostart.get(),
+            "riot_id":                 self.var_riot_id.get().strip(),
+            "telemetry_enabled":       self.var_telemetry.get(),
+            "auto_update_check":       self.var_autoupdate.get(),
+            "telemetry_uuid":          self.config_data.get("telemetry_uuid", ""),
+            "daily_played_date":       self.config_data.get("daily_played_date"),
+            "daily_solo_played_seconds":  self.config_data.get("daily_solo_played_seconds", 0),
+            "daily_party_played_seconds": self.config_data.get("daily_party_played_seconds", 0),
         }
 
-        save_config(new_config)
-        set_auto_start(new_config["auto_start"])
-        self.config = new_config
+        save_config(new_cfg)
+        set_auto_start(new_cfg["auto_start"])
+        self.config_data = new_cfg
 
         if self.on_config_updated:
-            self.on_config_updated(new_config)
+            self.on_config_updated(new_cfg)
 
         messagebox.showinfo(t("save_success_title"), t("save_success_msg"), parent=self)
         self._build_ui()
@@ -791,12 +661,11 @@ class SettingsWindow(tk.Toplevel):
 
 def show_settings(parent: tk.Tk, on_config_updated=None):
     """기존 tk.Tk 루트 위에 설정 창을 Toplevel로 띄웁니다."""
-    win = SettingsWindow(parent, on_config_updated=on_config_updated)
-    return win
+    return SettingsWindow(parent, on_config_updated=on_config_updated)
 
 
 if __name__ == "__main__":
-    # 독립 실행(테스트용): 루트를 직접 만들어 실행
+    # 독립 실행 테스트용
     root = tk.Tk()
     root.withdraw()
     win = SettingsWindow(root)
