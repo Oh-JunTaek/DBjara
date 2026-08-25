@@ -35,6 +35,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "notif_solo_msg": "1인 솔로 랭크 매칭이 감지되어 취소되었습니다.\n(2인 이상 다인큐만 가능합니다)",
         "notif_time_title": "DBjara - 일일 시간 초과",
         "notif_time_msg": "오늘의 솔로 허용 시간({minutes}분)을 모두 소진하여 종료되었습니다.",
+        "notif_time_warn_title": "DBjara - 허용 시간 종료 임박",
+        "notif_time_warn_msg": "오늘의 솔로 플레이 허용 시간이 {left}분 남았습니다! 이번 판이 마지막입니다.",
         "notif_time_block_msg": "오늘의 일일 솔로 허용 시간을 초과하여 매칭이 차단되었습니다.",
         "notif_update_title": "DBjara 새 버전 업데이트 알림",
         "notif_update_msg": "새로운 버전 ({tag})이 출시되었습니다.\n트레이 메뉴의 설정을 열어 확인하세요.",
@@ -48,7 +50,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "mode_high": "상 (High): 롤 실행 자체 차단",
         "mode_medium": "중 (Medium): 솔로(1인) 플레이 금지 (권장)",
         "mode_low": "하 (Low): 일일 솔로 시간 제한",
-        "daily_limit_label": "하루 최대 솔로 시간: {minutes}분",
+        "daily_limit_label": "하루 최대 솔로 시간 선택",
 
         # 설정 화면 - 섹션 2: 야간 시간 통제
         "sec_night": " 야간 시간 강제 차단 (디비자라 모드) ",
@@ -126,6 +128,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "notif_solo_msg": "Solo matchmaking detected and canceled!\n(Only party queue with friends is allowed)",
         "notif_time_title": "DBjara - Daily Limit Reached",
         "notif_time_msg": "Daily solo time limit ({minutes} min) exceeded. League client closed.",
+        "notif_time_warn_title": "DBjara - Time Warning",
+        "notif_time_warn_msg": "You have {left} minutes left of solo play time today! This is your final game.",
         "notif_time_block_msg": "Daily solo time limit exceeded. Matchmaking blocked.",
         "notif_update_title": "DBjara Update Available",
         "notif_update_msg": "New version ({tag}) is available!\nOpen settings from tray to download.",
@@ -139,7 +143,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "mode_high": "High: Block League entirely",
         "mode_medium": "Medium: Block Solo Queue only (Recommended)",
         "mode_low": "Low: Daily Solo time limit",
-        "daily_limit_label": "Daily Solo Limit: {minutes} mins",
+        "daily_limit_label": "Select Daily Solo Time Limit",
 
         # Settings - Section 2: Night Lock
         "sec_night": " Night Curfew (DBjara Mode) ",
