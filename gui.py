@@ -283,7 +283,7 @@ class SettingsWindow(tk.Tk):
         self.config = load_config()
 
         self.title(t("app_title"))
-        self.geometry("640x880")
+        self.geometry("640x890")
         self.resizable(False, False)
         self.configure(bg=SlateTheme.BG_DARK)
 
@@ -561,7 +561,7 @@ class SettingsWindow(tk.Tk):
         )
         chk_auto.pack(anchor="w")
 
-        # 8. 섹션 5: 부가 기능 및 전적/통계 수집
+        # 8. 섹션 5: 부가 기능 및 전적/통계 수집 (로그 수집 복원)
         card_meta = tk.LabelFrame(
             self.main_container, text=t("sec_meta"), font=("Malgun Gothic", 10, "bold"),
             bg=SlateTheme.BG_CARD, fg=SlateTheme.TEXT_MAIN, bd=1, relief=tk.SOLID, padx=14, pady=6
@@ -599,7 +599,7 @@ class SettingsWindow(tk.Tk):
         )
         chk_au.pack(side=tk.LEFT)
 
-        # 9. 플랜 저장 버튼
+        # 9. 플랜 저장 버튼 및 비상 자동실행 완전 삭제 버튼
         btn_save = tk.Button(
             self.main_container, text=t("btn_save"), font=("Malgun Gothic", 12, "bold"),
             bg=SlateTheme.ACCENT_CYAN, fg=SlateTheme.BG_DARK, activebackground="#0284c7",
