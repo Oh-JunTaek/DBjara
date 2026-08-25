@@ -13,7 +13,7 @@ CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.j
 REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 APP_NAME = "DBjara"
 
-# DBjara 2.0 기본 설정값 정의
+# DBjara 기본 설정값 정의
 DEFAULT_CONFIG = {
     "language": "ko",
     # 약정 기간 설정 ("none", "1day", "7days", "30days")
@@ -29,6 +29,8 @@ DEFAULT_CONFIG = {
     "night_lock": True,
     "night_start": "23:00",
     "night_end": "07:00",
+    # 스마트 멘탈 쿨다운 (게임 후 5분 휴식)
+    "cooldown_enabled": True,
     # 자제력 자물쇠 및 보안
     "otp_enabled": False,
     "otp_secret": "",
@@ -38,7 +40,7 @@ DEFAULT_CONFIG = {
     "daily_party_played_seconds": 0,
     # 부팅 시 자동 실행
     "auto_start": False,
-    # 부가 기능
+    # 부가 기능 및 전적/통계 수집
     "riot_id": "",
     "riot_api_key": "",
     "telemetry_enabled": True,
@@ -89,15 +91,12 @@ def calculate_commitment_end_date(plan: str) -> str:
     """선택한 약정 플랜에 따른 종료 일시를 반환합니다."""
     now = datetime.now()
     if plan == "1day":
-        # 오늘 자정(23:59:59)까지
         end_dt = now.replace(hour=23, minute=59, second=59, microsecond=0)
         return end_dt.strftime("%Y-%m-%d %H:%M:%S")
     elif plan == "7days":
-        # 7일 후 자정까지
         end_dt = (now + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=0)
         return end_dt.strftime("%Y-%m-%d %H:%M:%S")
     elif plan == "30days":
-        # 30일 후 자정까지
         end_dt = (now + timedelta(days=29)).replace(hour=23, minute=59, second=59, microsecond=0)
         return end_dt.strftime("%Y-%m-%d %H:%M:%S")
     return ""

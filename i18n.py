@@ -37,6 +37,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "notif_solo_time_over_msg": "오늘의 솔로 허용 시간을 모두 소진하여 매칭이 차단되었습니다.",
         "notif_party_time_over_title": "DBjara - 파티 시간 소진",
         "notif_party_time_over_msg": "오늘의 파티 플레이 허용 시간을 모두 소진하여 매칭이 차단되었습니다.",
+        "notif_cooldown_title": "DBjara - 강제 휴식 (쿨다운)",
+        "notif_cooldown_msg": "게임 종료 후 {minutes}분 휴식 시간입니다! 뇌절 방지를 위해 잠시 쉬어주세요.",
         "notif_time_warn_title": "DBjara - 시간 종료 임박 (10분 전)",
         "notif_time_warn_msg": "오늘 허용된 플레이 시간이 10분 남았습니다! 이번 판이 마지막 게임입니다.",
         "notif_update_title": "DBjara 업데이트 알림",
@@ -47,9 +49,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "dash_d_day": "D-{days}",
         "dash_today": "D-Day (오늘 종료)",
         "dash_no_plan": "자유 설정 모드",
-        "dash_lock_until": "목표일 ({date})까지 규칙 변경이 잠겨 있습니다.",
-        "dash_unlock_hint": "설정을 수정하려면 동반자 OTP 또는 비상 마스터키(1234)가 필요합니다.",
-        "dash_today_usage": "오늘 사용량: 솔로 {solo_used} / 파티 {party_used}",
+        "dash_lock_until": "목표일: {date} 자정까지 규칙 변경 불가",
+        "dash_today_usage": "오늘 사용량 ➔ 솔로: {solo_used} / 파티: {party_used}",
 
         # 섹션 0: 목표 약정 기간
         "sec_commitment": " 🎯 목표 약정 기간 (Commitment Plan) ",
@@ -76,27 +77,30 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "night_start": "차단 시작:",
         "night_end": "~ 종료:",
 
-        # 섹션 4: 자제력 자물쇠 & 보안
-        "sec_lock": " 🔒 자제력 자물쇠 & 동반자 OTP ",
+        # 섹션 4: 스마트 미세조정 (추가 스마트 통제)
+        "sec_smart": " ⚡ 스마트 멘탈 & 쿨다운 통제 ",
+        "cooldown_chk": "게임 종료 후 5분 강제 휴식 타이머 (연승/연패 뇌절 및 연속 게임 방지)",
+
+        # 섹션 5: 자제력 자물쇠 & 보안
+        "sec_lock": " 🔒 자제력 자물쇠 & 보안 설정 ",
         "otp_chk": "동반자 OTP 자물쇠 활성화 (잠금 기간 중 수정 시 OTP 요구)",
         "otp_view_btn": "동반자 등록 QR / 비밀키 보기",
-        "master_key_hint": "※ 개발/비상용 마스터키: 1234 입력 시 언제든 해제 가능",
         "auto_start_chk": "윈도우 부팅 시 자동 실행 (백그라운드 상시 감시)",
 
-        # 섹션 5: 기타 설정
-        "sec_meta": " 🔍 부가 기능 및 전적 검증 ",
-        "riot_desc": "소환사 Riot ID 등록 (PC방 등 외부 몰래 솔랭 방지):",
-        "telemetry_chk": "익명 통계 전송 동의",
-        "auto_update_chk": "시작 시 자동 업데이트 확인",
+        # 섹션 6: 부가 기능 & 익명 통계
+        "sec_meta": " 🔍 부가 기능 및 전적 검증 (로그 수집) ",
+        "riot_desc": "소환사 Riot ID 등록 (외부/PC방 몰래 솔랭 감지):",
+        "telemetry_chk": "익명 사용 통계 수집 동의 (차단 횟수 등 비식별 데이터)",
+        "auto_update_chk": "시작 시 최신 버전 자동 확인",
         "btn_save": "플랜 저장 및 통제 시작",
         "btn_update_check": "업데이트 확인",
 
-        # OTP / 마스터키 인증 모달
+        # OTP 모달
         "otp_auth_title": "보안 인증 (약정 기간 잠금 해제)",
-        "otp_auth_desc": "설정을 변경하려면 동반자 OTP 번호(6자리)\n또는 비상 마스터키(1234)를 입력하세요.",
+        "otp_auth_desc": "설정을 변경하려면 동반자 OTP 번호(6자리)\n또는 비상 인증 코드를 입력하세요.",
         "otp_auth_btn": "잠금 해제 및 인증",
         "otp_cancel_btn": "취소",
-        "otp_err_mismatch": "인증번호가 일치하지 않습니다. (비상키: 1234)",
+        "otp_err_mismatch": "인증번호가 일치하지 않습니다.",
 
         # OTP 등록 팝업
         "otp_setup_title": "동반자 등록 (Google Authenticator) - DBjara",
@@ -146,6 +150,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "notif_solo_time_over_msg": "Daily solo time limit exhausted. Matchmaking blocked.",
         "notif_party_time_over_title": "DBjara - Party Limit Reached",
         "notif_party_time_over_msg": "Daily party time limit exhausted. Matchmaking blocked.",
+        "notif_cooldown_title": "DBjara - Rest Cooldown",
+        "notif_cooldown_msg": "Post-game mandatory rest time ({minutes}m)! Please take a short break.",
         "notif_time_warn_title": "DBjara - Time Warning (10 mins left)",
         "notif_time_warn_msg": "You have 10 minutes left of play time today! This is your final game.",
         "notif_update_title": "DBjara Update Available",
@@ -156,9 +162,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "dash_d_day": "D-{days}",
         "dash_today": "D-Day (Ends Today)",
         "dash_no_plan": "Flexible Rule Mode",
-        "dash_lock_until": "Rules are locked until target date ({date}).",
-        "dash_unlock_hint": "Companion OTP or Emergency Master Code (1234) required to edit.",
-        "dash_today_usage": "Today's Usage: Solo {solo_used} / Party {party_used}",
+        "dash_lock_until": "Locked until midnight ({date})",
+        "dash_today_usage": "Today's Usage ➔ Solo: {solo_used} / Party: {party_used}",
 
         # Section 0: Commitment Plan
         "sec_commitment": " 🎯 Commitment Plan ",
@@ -185,27 +190,30 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "night_start": "Start:",
         "night_end": "~ End:",
 
-        # Section 4: Lock & Security
-        "sec_lock": " 🔒 Commitment Lock & Companion OTP ",
+        # Section 4: Smart Cooldown
+        "sec_smart": " ⚡ Smart Rest & Cooldown Control ",
+        "cooldown_chk": "Mandatory 5-minute cooldown after each match (Anti-binge gaming)",
+
+        # Section 5: Lock & Security
+        "sec_lock": " 🔒 Commitment Lock & Security ",
         "otp_chk": "Enable Companion OTP Lock (Requires OTP to edit locked plan)",
         "otp_view_btn": "Show Companion QR Code / Secret Key",
-        "master_key_hint": "※ Emergency / Dev Master Code: '1234' unlocks anytime",
         "auto_start_chk": "Start automatically with Windows (Background Monitor)",
 
-        # Section 5: Meta Settings
-        "sec_meta": " 🔍 Verification & Analytics ",
+        # Section 6: Verification & Analytics
+        "sec_meta": " 🔍 Verification & Anonymous Analytics ",
         "riot_desc": "Riot ID (Anti-PC Cafe Bypass):",
-        "telemetry_chk": "Send anonymous usage statistics",
+        "telemetry_chk": "Send anonymous usage analytics (Block counts only)",
         "auto_update_chk": "Check for updates on startup",
         "btn_save": "Save Plan & Start Enforcement",
         "btn_update_check": "Check for Updates",
 
         # OTP Modal
         "otp_auth_title": "Security Verification (Unlock Plan)",
-        "otp_auth_desc": "Enter companion OTP (6 digits)\nor Emergency Master Code (1234) to modify settings.",
+        "otp_auth_desc": "Enter companion OTP (6 digits)\nor Emergency Master Code to modify settings.",
         "otp_auth_btn": "Unlock & Verify",
         "otp_cancel_btn": "Cancel",
-        "otp_err_mismatch": "Invalid code. (Emergency master code: 1234)",
+        "otp_err_mismatch": "Invalid verification code.",
 
         # OTP Setup
         "otp_setup_title": "Companion Setup (Google Authenticator) - DBjara",

@@ -1,6 +1,5 @@
 """
 DBjara 2.0 - 메인 애플리케이션 백그라운드 서비스
-복합 통제 룰셋(솔로/파티/야간 독립 제어) 및 목표 약정 기간 시스템을 실시간으로 감시합니다.
 """
 
 import os
@@ -11,7 +10,6 @@ import subprocess
 from datetime import datetime, time as dtime
 from typing import Optional
 
-# 윈도우 알림 시 프로세스명이 'python' 대신 'DBjara'로 표시되도록 AppUserModelID 등록
 try:
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("DBjara.App.1.0")
@@ -32,18 +30,14 @@ from i18n import t, set_language
 
 
 def create_tray_icon_image() -> Image.Image:
-    """시스템 트레이용 달/방패 아이콘을 생성합니다."""
+    """시스템 트레이용 아이콘 이미지"""
     img = Image.new("RGBA", (64, 64), color=(0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # 딥 슬레이트 네이비 배경
     draw.ellipse((4, 4, 60, 60), fill=(15, 23, 42, 255), outline=(56, 189, 248, 255), width=3)
-
-    # 초승달 형상 (수면/통제 상징)
     draw.ellipse((16, 14, 48, 46), fill=(248, 250, 252, 255))
     draw.ellipse((22, 12, 54, 44), fill=(15, 23, 42, 255))
 
-    # 인디고 별 포인트
     draw.point((42, 20), fill=(129, 140, 248, 255))
     draw.point((44, 22), fill=(129, 140, 248, 255))
     draw.point((40, 22), fill=(129, 140, 248, 255))
@@ -63,18 +57,18 @@ class DBjaraApp:
         self.watchdog_process: Optional[subprocess.Popen] = None
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
         
-        # 사전 10분 전 알림 플래그
         self.warned_solo_10min = False
         self.warned_party_10min = False
+        self.current_session_mode = "solo"
         
-        # 현재 활성 세션이 솔로인지 파티인지 추적
-        self.current_session_mode = "solo"  # "solo" or "party"
+        # 쿨다운 휴식 타이머 관리를 위한 변수
+        self.prev_phase = "None"
+        self.last_game_ended_time = 0
 
-        # 익명 시작 통계 전송
         send_event_async(self.config, "app_start")
 
     def is_in_night_time(self) -> bool:
-        """현재 시각이 야간 차단 시간대에 해당하는지 확인합니다."""
+        """야간 차단 시간대 확인"""
         try:
             start_str = self.config.get("night_start", "23:00")
             if start_str == "24:00":
@@ -96,7 +90,6 @@ class DBjaraApp:
             return False
 
     def notify(self, title: str, message: str):
-        """시스템 트레이 알림을 전송합니다. (단시간 연속 스팸 방지)"""
         now = time.time()
         if now - self.last_notification_time < 4:
             return
@@ -109,7 +102,6 @@ class DBjaraApp:
                 pass
 
     def check_updates_async(self):
-        """시작 시 최신 버전을 비동기로 확인합니다."""
         if not self.config.get("auto_update_check", True):
             return
 
@@ -120,8 +112,8 @@ class DBjaraApp:
         threading.Thread(target=_check, daemon=True).start()
 
     def monitor_loop(self):
-        """핵심 백그라운드 고속 감시 루프 (0.15초 주기)"""
-        print("[DBjara] 스마트 감시 루프가 활성화되었습니다.")
+        """핵심 백그라운드 모니터링 루프"""
+        print("[DBjara] 백그라운드 감시 루프가 활성화되었습니다.")
         last_save_time = time.time()
         last_second_tick = time.time()
 
@@ -129,7 +121,7 @@ class DBjaraApp:
             try:
                 now_sec = time.time()
 
-                # 1. 야간 차단 체크 (최우선 순위 - 디비자라 모드)
+                # 1. 야간 차단 체크
                 if self.config.get("night_lock", True) and self.is_in_night_time():
                     if self.lcu.is_league_running():
                         self.lcu.kill_league_client()
@@ -138,7 +130,7 @@ class DBjaraApp:
                         time.sleep(1.0)
                         continue
 
-                # 2. 롤 클라이언트 연결 및 매칭/플레이 상태 감시
+                # 2. LCU 연동 및 상태 감시
                 if self.lcu.is_league_running():
                     connected = self.lcu.is_connected() or self.lcu.connect()
                     if connected:
@@ -146,7 +138,11 @@ class DBjaraApp:
                         search_state = self.lcu.get_matchmaking_search_state()
                         phase = self.lcu.get_gameflow_phase()
 
-                        # 파티 상태 갱신
+                        # 게임 완료 지점 감지 (InProgress ➔ Lobby/None 전환 시 5분 쿨다운 시작)
+                        if self.prev_phase in ("InProgress", "ChampSelect") and phase in ("Lobby", "None", "PreEndOfGame", "EndOfGame"):
+                            self.last_game_ended_time = now_sec
+                        self.prev_phase = phase
+
                         if party_size >= 2:
                             self.current_session_mode = "party"
                         elif party_size == 1:
@@ -159,9 +155,19 @@ class DBjaraApp:
 
                         is_matching = (search_state in ("Searching", "Found") or phase in ("Matchmaking", "ReadyCheck"))
 
-                        # [매칭 감지 및 차단]
+                        # [스마트 멘탈 5분 휴식 쿨다운 체크]
+                        if is_matching and self.config.get("cooldown_enabled", True) and self.last_game_ended_time > 0:
+                            elapsed_cooldown = now_sec - self.last_game_ended_time
+                            if elapsed_cooldown < 300:  # 5분(300초) 이내
+                                rem_cool_min = int((300 - elapsed_cooldown) // 60) + 1
+                                if self.lcu.cancel_matchmaking():
+                                    self.notify(t("notif_cooldown_title"), t("notif_cooldown_msg", minutes=rem_cool_min))
+                                    send_event_async(self.config, "block_cooldown")
+                                    time.sleep(0.5)
+                                    continue
+
+                        # [매칭 조건부 차단]
                         if is_matching:
-                            # 1인 솔로 큐 매칭 시도 시
                             if self.current_session_mode == "solo" and party_size <= 1:
                                 if solo_rule == "block_always":
                                     if self.lcu.cancel_matchmaking():
@@ -174,7 +180,6 @@ class DBjaraApp:
                                             self.notify(t("notif_solo_time_over_title"), t("notif_solo_time_over_msg"))
                                             send_event_async(self.config, "block_solo_time_over")
 
-                            # 2인 이상 다인큐 매칭 시도 시
                             elif self.current_session_mode == "party" or party_size >= 2:
                                 if party_rule == "block_always":
                                     if self.lcu.cancel_matchmaking():
@@ -187,13 +192,12 @@ class DBjaraApp:
                                             self.notify(t("notif_party_time_over_title"), t("notif_party_time_over_msg"))
                                             send_event_async(self.config, "block_party_time_over")
 
-                        # [인게임 시간 누적 및 10분 전 사전 알림]
+                        # [인게임 시간 누적]
                         if now_sec - last_second_tick >= 1.0:
                             delta = int(now_sec - last_second_tick)
                             last_second_tick = now_sec
 
                             if phase in ("ChampSelect", "InProgress", "GameStart", "Reconnect"):
-                                # 솔로 플레이 진행 중
                                 if self.current_session_mode == "solo":
                                     self.config["daily_solo_played_seconds"] = self.config.get("daily_solo_played_seconds", 0) + delta
                                     s_played = self.config["daily_solo_played_seconds"]
@@ -203,7 +207,6 @@ class DBjaraApp:
                                             self.warned_solo_10min = True
                                             self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg"))
 
-                                # 파티 플레이 진행 중
                                 elif self.current_session_mode == "party":
                                     self.config["daily_party_played_seconds"] = self.config.get("daily_party_played_seconds", 0) + delta
                                     p_played = self.config["daily_party_played_seconds"]
@@ -213,7 +216,6 @@ class DBjaraApp:
                                             self.warned_party_10min = True
                                             self.notify(t("notif_time_warn_title"), t("notif_time_warn_msg"))
 
-                # 30초마다 설정 및 누적 시간 자동 저장
                 if now_sec - last_save_time > 30:
                     save_config(self.config)
                     last_save_time = now_sec
@@ -224,7 +226,6 @@ class DBjaraApp:
             time.sleep(0.15)
 
     def launch_watchdog(self):
-        """강제 종료 방지를 위한 Watchdog 프로세스를 백그라운드로 실행합니다."""
         try:
             watchdog_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "watchdog.py")
             if os.path.exists(watchdog_script):
@@ -237,7 +238,6 @@ class DBjaraApp:
             print(f"[DBjara] Watchdog 실행 실패: {e}")
 
     def on_config_updated(self, new_config: dict):
-        """설정 변경 콜백"""
         self.config = new_config
         set_language(self.config.get("language", "ko"))
         self.riot_validator = RiotAPIValidator(api_key=self.config.get("riot_api_key", ""))
@@ -245,12 +245,10 @@ class DBjaraApp:
         self.warned_party_10min = False
 
     def open_settings_ui(self):
-        """설정 창 열기"""
         win = SettingsWindow(on_config_updated=self.on_config_updated)
         win.mainloop()
 
     def request_exit(self):
-        """프로그램 종료 요청 (약정 기간 잠금 중이거나 OTP 켜져있으면 마스터키/OTP 요구)"""
         is_locked = is_commitment_locked(self.config)
         has_otp = self.config.get("otp_enabled", False) and self.config.get("otp_secret")
 
@@ -281,17 +279,12 @@ class DBjaraApp:
         sys.exit(0)
 
     def run(self):
-        # 1. Watchdog 시작
         self.launch_watchdog()
-
-        # 2. 업데이트 비동기 확인
         self.check_updates_async()
 
-        # 3. 백그라운드 모니터링 스레드 시작
         monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
         monitor_thread.start()
 
-        # 4. 시스템 트레이 메뉴 구성
         def get_status_text(item):
             plan_name = self.config.get("commitment_plan", "none")
             return f"{t('tray_plan_prefix')}{t('tray_plan_' + plan_name)}"
@@ -308,7 +301,7 @@ class DBjaraApp:
         icon_image = create_tray_icon_image()
         self.tray_icon = pystray.Icon("DBjara", icon_image, "DBjara - LoL Control Solution", menu)
 
-        print("[DBjara] 시스템 트레이 서비스가 시작되었습니다.")
+        print("[DBjara] 시스템 트레이 서비스가 실행되었습니다.")
         self.tray_icon.run()
 
 
