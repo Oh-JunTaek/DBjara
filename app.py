@@ -260,28 +260,18 @@ class DBjaraApp:
         self.warned_party_10min = False
 
     def handle_open_settings_main_thread(self):
-        """메인 스레드에서 안전하게 설정 창을 엽니다."""
+        """메인 스레드에서 안전하게 설정 창을 엽니다.
+        
+        대시보드 열기는 약정 잠금 여부와 관계없이 항상 허용합니다.
+        설정 변경(저장) 시에만 인증이 요구됩니다.
+        """
         if self.settings_window_active:
             return
         self.settings_window_active = True
 
-        def _open():
-            win = SettingsWindow(self.tk_root, on_config_updated=self.on_config_updated)
-            win.protocol("WM_DELETE_WINDOW", lambda: (win.destroy(), setattr(self, 'settings_window_active', False)))
-            # 창이 닫혔을 때 플래그 해제
-            win.bind("<Destroy>", lambda e: setattr(self, 'settings_window_active', False) if e.widget == win else None)
-        
-        # 약정 잠금이나 OTP가 켜져 있는지 확인
-        is_locked = is_commitment_locked(self.config)
-        has_otp = self.config.get("otp_enabled", False) and self.config.get("otp_secret")
-
-        if is_locked or has_otp:
-            OTPAuthDialog(
-                self.tk_root, self.config.get("otp_secret", ""),
-                on_success=_open
-            )
-        else:
-            _open()
+        win = SettingsWindow(self.tk_root, on_config_updated=self.on_config_updated)
+        win.protocol("WM_DELETE_WINDOW", lambda: (win.destroy(), setattr(self, 'settings_window_active', False)))
+        win.bind("<Destroy>", lambda e: setattr(self, 'settings_window_active', False) if e.widget == win else None)
 
     def handle_exit_main_thread(self):
         """메인 스레드에서 종료 요구 처리"""
